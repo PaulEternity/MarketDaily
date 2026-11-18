@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:market_daily}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${MYSQL_USERNAME:marketdaily}
+    password: ${MYSQL_PASSWORD}
