@@ -50,6 +50,10 @@ curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 
 最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每金衡盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。国内白银（`AGTD`）使用上海黄金交易所 Ag(T+D) 最近交易日收盘价，单位为人民币每千克。纳指也按实际交易日收盘价展示。BTC 使用来源的 24 小时变化，ETH 仅保留已采集历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
 
+国际现货金银、BTC 和国内金银支持 `GET /api/markets/{symbol}/hourly`。每小时第 5 分钟采集国际现货金银和 BTC，按来源时间归档，手动采集也会写入这三项的小时数据。国内金银在上金所常规交易时段采集延时最新价，按北京时间采集小时归档。小时记录自启用后积累。
+
+国内金银日收盘价和 FRED 纳斯达克综合指数默认每天北京时间 08:30、18:30 更新。环境变量 `MARKET_HOURLY_CRON` 和 `MARKET_DAILY_CRON` 可覆盖对应的采集时间，设为 `-` 可关闭相应定时任务。
+
 ## 手动采集与查询新闻
 
 新闻来源为 GDELT DOC 2.0 和美联储货币政策公告 RSS，两者均无需单独配置密钥。手动采集复用 `MARKET_ADMIN_KEY`，响应包含实际查询窗口和各来源状态。平日采集 24 小时，周末采集 72 小时。
@@ -63,6 +67,21 @@ curl --fail-with-body 'http://localhost:8080/api/news?market=GOLD&page=1&size=20
 新闻列表默认读取最近 24 小时。可用 ISO 8601 的 `from`、`to` 指定最多 30 天的窗口，用 `GOLD`、`NASDAQ` 或 `CRYPTO` 筛选市场。`publishedAt` 是已知的发布时间，`seenAt` 是 GDELT 收录时间。相同的 `eventHash` 表示同一事件，条目仍各自保留来源和原文链接。
 
 `NEWS_GDELT_QUERY` 可覆盖检索词。`NEWS_SCORE_WEIGHTS` 依次为相关性、重要性、可信度、时效，默认 `40,30,20,10`，总和须为 100。
+
+## AI 日报
+
+在 `.env` 设置 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL` 后，重启后端。硅基流动的 Base URL 填 `https://api.siliconflow.cn/v1`，第一版用 `Qwen/Qwen3.5-4B`。模型未配置时仍可查询既有日报。
+
+先完成一次行情或新闻采集，再从本机执行：
+
+```sh
+curl --fail-with-body -X POST http://localhost:8080/api/admin/reports/generate \
+  -H "X-Admin-Key: ${MARKET_ADMIN_KEY}"
+curl --fail-with-body http://localhost:8080/api/reports/today
+curl --fail-with-body 'http://localhost:8080/api/reports?page=1&size=10'
+```
+
+生成使用北京时间当天的行情状态和最近 24 小时去重后的新闻。成功后保存证据快照、新闻引用、模型和可用的 Token 用量。同一单实例服务里，一个业务日已有日报时会直接返回旧结果（`reused=true`），不会重新调用模型。详情可用 `GET /api/reports/{yyyy-MM-dd}` 查询。模型失败时可稍后手动重试，接口不会自动重发生成请求。
 
 ## 验证
 

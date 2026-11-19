@@ -25,6 +25,16 @@ public enum MarketAsset {
     final String source;
     final String comparisonType;
 
+    /** 是否提供小时趋势，包括按采集时间归档的国内金银延时快照。 */
+    boolean supportsHourly() {
+        return hasTimedQuote() || this == AU9999 || this == AGTD;
+    }
+
+    /** 常规报价接口是否直接提供带来源时间戳的盘中报价。 */
+    boolean hasTimedQuote() {
+        return this == XAUUSD || this == XAGUSD || this == BTCUSD;
+    }
+
     /** 为资产绑定固定的数据源、单位和涨跌幅定义。 */
     MarketAsset(String displayName, String currency, String unit, String source, String comparisonType) {
         this.displayName = displayName;

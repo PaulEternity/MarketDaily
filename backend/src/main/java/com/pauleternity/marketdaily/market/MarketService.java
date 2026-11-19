@@ -3,19 +3,22 @@ package com.pauleternity.marketdaily.market;
 import com.pauleternity.marketdaily.market.MarketQuoteProvider.Quote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /** 执行行情采集、比较和查询，隔离来源失败。 */
 @Service
-class MarketService {
+public class MarketService {
 
     private static final Logger log = LoggerFactory.getLogger(MarketService.class);
     private final MarketPriceMapper prices;
@@ -29,7 +32,30 @@ class MarketService {
 
     /** 同一实例串行采集，整轮按触发时的业务日期入库。 */
     synchronized List<Latest> collect(LocalDate day) {
+        collectMatching(day, asset -> true);
+        return latest(day);
+    }
+
+    /** 每小时只采集支持盘中报价的来源，和手动采集共用同一把锁。 */
+    @Scheduled(cron = "${MARKET_HOURLY_CRON:0 5 * * * *}", zone = "Asia/Shanghai")
+    synchronized void collectHourly() {
+        collectMatching(LocalDate.now(MarketAsset.REPORT_ZONE), MarketAsset::hasTimedQuote);
+    }
+
+    /** 上午更新纳指最近收盘，傍晚更新上金所收盘，并重查纳指发布结果。 */
+    @Scheduled(cron = "${MARKET_DAILY_CRON:0 30 8,18 * * *}", zone = "Asia/Shanghai")
+    synchronized void collectDaily() {
+        collectMatching(LocalDate.now(MarketAsset.REPORT_ZONE), asset -> !asset.hasTimedQuote());
+    }
+
+    /** 手动和定时任务复用采集流程，按本轮目标筛选资产。 */
+    private void collectMatching(LocalDate day, Predicate<MarketAsset> included) {
         for (MarketQuoteProvider provider : providers) {
+            // 此轮需要请求并保存的资产范围，手动采集涵盖全部来源。
+            var assets = provider.assets();
+            if (assets.stream().noneMatch(included)) {
+                continue;
+            }
             // 仅在此捕获第三方异常，数据库写入错误仍按系统错误处理。
             Map<MarketAsset, Quote> quotes;
             try {
@@ -40,15 +66,16 @@ class MarketService {
                         failure.getClass().getSimpleName());
                 quotes = Map.of();
             }
-            for (MarketAsset asset : provider.assets()) {
-                save(asset, quotes.get(asset), day);
+            for (MarketAsset asset : assets) {
+                if (included.test(asset)) {
+                    save(asset, quotes.get(asset), day);
+                }
             }
         }
-        return latest(day);
     }
 
     /** 按固定资产顺序返回最新报价、数据新旧及当天的采集状态。 */
-    List<Latest> latest(LocalDate day) {
+    public List<Latest> latest(LocalDate day) {
         return MarketAsset.ACTIVE.stream().map(asset -> {
             MarketSnapshot today = prices.onDate(asset.name(), asset.source, day);
             MarketSnapshot quote = today != null && today.price() != null ? today
@@ -80,8 +107,23 @@ class MarketService {
         return new History(asset.name(), asset.unit, from, day, List.copyOf(byMarketDate.values()));
     }
 
+    /** 返回包含当前小时在内的最近 24 个小时。 */
+    HourlyHistory hourlyHistory(MarketAsset asset, Instant now) {
+        // 查询边界对齐整点，过去 23 小时加当前小时正好是 24 个桶。
+        Instant through = now.truncatedTo(ChronoUnit.HOURS);
+        Instant from = through.minus(23, ChronoUnit.HOURS);
+        return new HourlyHistory(asset.unit, from, through,
+                prices.hourlyHistory(asset.name(), asset.source, from, through));
+    }
+
     /** 保存单一资产的结果，失败或者缺少比较值时使用空值。 */
     private void save(MarketAsset asset, Quote quote, LocalDate day) {
+        // 按来源时间归桶，避免把休市时返回的旧报价填到当前小时。
+        if (asset.hasTimedQuote() && quote != null && quote.observedAt() != null) {
+            Instant observedAt = quote.observedAt();
+            prices.saveHourly(asset.name(), asset.source, observedAt.truncatedTo(ChronoUnit.HOURS),
+                    observedAt, quote.price());
+        }
         // 国际金银的上一可比值来自本地，交易日收盘及滚动涨跌以各来源数据为准。
         BigDecimal previous = quote == null ? null : quote.previousPrice();
         BigDecimal change = quote == null ? null : quote.changeAmount();
@@ -107,11 +149,15 @@ class MarketService {
     }
 
     /** 行情为空时仍暴露资产信息和当天采集状态，区分缺失和旧值。 */
-    record Latest(String symbol, String name, String unit, String source, String comparisonType,
+    public record Latest(String symbol, String name, String unit, String source, String comparisonType,
                   String freshness, String collectionStatus, MarketSnapshot quote) {
     }
 
     /** 历史走势数据和窗口边界，points 按实际行情日期升序。 */
     record History(String symbol, String unit, LocalDate from, LocalDate through, List<MarketSnapshot> points) {
+    }
+
+    /** 小时趋势的 UTC 时间窗口及已采集报价。 */
+    record HourlyHistory(String unit, Instant from, Instant through, List<MarketPriceMapper.HourlyPoint> points) {
     }
 }

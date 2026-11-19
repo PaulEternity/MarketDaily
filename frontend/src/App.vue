@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRequest, type History, type Latest, type Market, type NewsPage, type SymbolCode } from './api'
+import ReportPanel from './ReportPanel.vue'
+import { useRequest, type History, type HourlyHistory, type Latest, type Market, type NewsPage, type SymbolCode } from './api'
 
 /** 市场工作台。只读接口独立加载，部分来源异常仍可浏览其余模块。 */
 
@@ -25,7 +26,13 @@ const markets = [
 
 // 趋势区与新闻区各自保留筛选条件。刷新时更新新闻分页锚点。
 const selectedAsset = ref<SymbolCode>('XAUUSD')
-const days = ref<7 | 30>(7)
+// 保留用户选择的趋势窗口。仅有日行情的品种自动回到 7 日视图。
+const trendRange = ref<'24h' | 7 | 30>(7)
+const intradayAssets = new Set<SymbolCode>(['XAUUSD', 'AU9999', 'XAGUSD', 'AGTD', 'BTCUSD'])
+// 国内金银的延时源只提供最新价格，时间轴按采集时刻归档。
+const isDelayedMetal = computed(() => selectedAsset.value === 'AU9999' || selectedAsset.value === 'AGTD')
+const canShowHourly = computed(() => intradayAssets.has(selectedAsset.value))
+const activeRange = computed(() => trendRange.value === '24h' && !canShowHourly.value ? 7 : trendRange.value)
 const selectedMarket = ref<Market | ''>('')
 const newsPage = ref(1)
 const newsSize = 6
@@ -68,8 +75,8 @@ onBeforeUnmount(() => quoteResize?.disconnect())
 
 const asset = computed(() => assets.find(item => item.code === selectedAsset.value) ?? assets[0])
 const { data: latest, pending: loadingQuotes, error: quoteError } = useRequest<Latest[]>('/api/markets/latest', refreshVersion)
-const { data: history, pending: loadingHistory, error: historyError } = useRequest<History>(
-  () => `/api/markets/${selectedAsset.value}/history?days=${days.value}`, refreshVersion)
+const { data: history, pending: loadingHistory, error: historyError } = useRequest<History | HourlyHistory>(
+  () => `/api/markets/${selectedAsset.value}/${activeRange.value === '24h' ? 'hourly' : 'history?days=' + activeRange.value}`, refreshVersion)
 const { data: news, pending: loadingNews, error: newsError } = useRequest<NewsPage>(() => {
   // 分页期间共用同一个起止时刻，防止结果随时钟移动。
   const to = anchor.value
@@ -150,6 +157,7 @@ function safeUrl(value: string) {
       </a>
       <nav aria-label="页面导航">
         <a href="#overview"><span class="nav-icon" aria-hidden="true">▦</span>市场概览</a>
+        <a href="#reports"><span class="nav-icon" aria-hidden="true">▧</span>AI 日报</a>
         <a href="#trend"><span class="nav-icon" aria-hidden="true">⌁</span>行情趋势</a>
         <a href="#news"><span class="nav-icon" aria-hidden="true">▤</span>市场新闻</a>
       </nav>
@@ -215,17 +223,20 @@ function safeUrl(value: string) {
           <div class="panel-heading">
             <div><h2 id="trend-title">行情趋势</h2><p>{{ asset.label }} <span> / </span> {{ history?.unit ?? asset.unit }}</p></div>
             <div class="segmented" role="group" aria-label="行情日期范围">
-              <button type="button" :aria-pressed="days === 7" @click="days = 7">7 日</button>
-              <button type="button" :aria-pressed="days === 30" @click="days = 30">30 日</button>
+              <button v-if="canShowHourly" type="button" :aria-pressed="activeRange === '24h'" @click="trendRange = '24h'">24 小时</button>
+              <button type="button" :aria-pressed="activeRange === 7" @click="trendRange = 7">7 日</button>
+              <button type="button" :aria-pressed="activeRange === 30" @click="trendRange = 30">30 日</button>
             </div>
           </div>
           <div v-if="loadingHistory || historyError || !history?.points.some(point => point.price != null)" class="chart-empty" role="status">
             <span aria-hidden="true" class="chart-empty-icon">⌁</span>
             <strong>{{ loadingHistory ? '正在读取历史行情' : historyError ? '历史行情读取失败' : '暂无历史行情' }}</strong>
-            <span v-if="!loadingHistory">{{ historyError ? '可刷新数据后重试。' : '采集到有效报价后，会在对应日期显示价格。' }}</span>
+            <span v-if="!loadingHistory">{{ historyError ? '可刷新数据后重试。' : '采集到有效报价后，刷新数据即可查看。' }}</span>
           </div>
-          <TrendChart v-else :history="history" :days="days" :color="asset.color" />
-          <p class="chart-note">仅展示已采集报价，缺失日期留空。</p>
+          <TrendChart v-else :history="history" :range="activeRange" :color="asset.color" />
+          <p v-if="activeRange !== '24h'" class="chart-note">仅展示已采集报价，缺失日期留空。</p>
+          <p v-else-if="isDelayedMetal" class="chart-note">上金所延时报价，按北京时间的采集小时归档，缺失时段留空。</p>
+          <p v-else class="chart-note">北京时间，展示每小时最新的已采集报价，缺失时段留空。</p>
         </section>
 
         <section class="panel sources-panel" aria-labelledby="sources-title">
@@ -238,6 +249,8 @@ function safeUrl(value: string) {
           </ul>
         </section>
       </div>
+
+      <ReportPanel :refresh="refreshVersion" />
 
       <section id="news" class="panel news-panel" aria-labelledby="news-title" :aria-busy="loadingNews">
         <div class="panel-heading">

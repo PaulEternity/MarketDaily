@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -43,6 +44,15 @@ class MarketController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "days 仅支持 7 或 30");
         }
         return Result.ok(markets.history(symbol, days, LocalDate.now(MarketAsset.REPORT_ZONE)));
+    }
+
+    /** 读取带来源时间戳的资产最近 24 小时已存报价。 */
+    @GetMapping("/api/markets/{symbol}/hourly")
+    Result<MarketService.HourlyHistory> hourly(@PathVariable("symbol") MarketAsset symbol) {
+        if (!symbol.supportsHourly()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该资产仅提供日行情");
+        }
+        return Result.ok(markets.hourlyHistory(symbol, Instant.now()));
     }
 
     /** 管理请求触发一轮采集，并返回各资产的入库结果。 */

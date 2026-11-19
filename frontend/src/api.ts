@@ -30,6 +30,14 @@ export interface History {
   points: Quote[]
 }
 
+/** 小时窗口以 UTC 整点返回，前端统一转换为北京时间。 */
+export interface HourlyHistory {
+  unit: string
+  from: string
+  through: string
+  points: { hour: string; price: number }[]
+}
+
 /** 新闻优先显示真实发布时间，其次明确标记收录时间。 */
 export interface NewsPage {
   total: number

@@ -15,7 +15,7 @@ import java.util.Set;
 class SgeQuoteProvider implements MarketQuoteProvider {
 
     // 上游合约对应本地资产代码，金价为元/克，白银为元/千克。
-    private static final Map<String, MarketAsset> CONTRACTS = Map.of(
+    static final Map<String, MarketAsset> CONTRACTS = Map.of(
             "Au99.99", MarketAsset.AU9999, "Ag(T+D)", MarketAsset.AGTD);
 
     private final SourceHttp http;

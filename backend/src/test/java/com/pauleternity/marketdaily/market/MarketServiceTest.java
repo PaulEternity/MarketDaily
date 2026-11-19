@@ -62,4 +62,61 @@ class MarketServiceTest {
         assertThat(latest).filteredOn(item -> item.symbol().equals("XAGUSD")).singleElement()
                 .satisfies(item -> assertThat(item.freshness()).isEqualTo("MISSING"));
     }
+
+    /** 小时采集跳过日线来源，延迟到达的报价仍存到它实际发生的小时。 */
+    @Test
+    void samplesIntradayProvidersUsingObservedHour() {
+        var mapper = mock(MarketPriceMapper.class);
+        var silver = mock(MarketQuoteProvider.class);
+        var fred = mock(MarketQuoteProvider.class);
+        // 这条报价发生在当前测试运行前，归档时须使用来源小时。
+        var observed = Instant.parse("2026-11-19T03:47:02Z");
+        when(silver.assets()).thenReturn(Set.of(MarketAsset.XAGUSD));
+        when(fred.assets()).thenReturn(Set.of(MarketAsset.NASDAQCOM));
+        when(silver.fetch()).thenReturn(Map.of(MarketAsset.XAGUSD, new Quote(new BigDecimal("45.36"),
+                null, null, null, DAY, observed)));
+
+        new MarketService(mapper, List.of(fred, silver)).collectHourly();
+
+        verify(fred, never()).fetch();
+        verify(mapper).saveHourly("XAGUSD", "Gold API", Instant.parse("2026-11-19T03:00:00Z"),
+                observed, new BigDecimal("45.36"));
+    }
+
+    /** 日线定时任务请求上金所和 FRED，国际盘中来源继续由小时任务负责。 */
+    @Test
+    void schedulesDailyProvidersSeparately() {
+        var mapper = mock(MarketPriceMapper.class);
+        var domestic = mock(MarketQuoteProvider.class);
+        var fred = mock(MarketQuoteProvider.class);
+        var btc = mock(MarketQuoteProvider.class);
+        when(domestic.assets()).thenReturn(Set.of(MarketAsset.AU9999, MarketAsset.AGTD));
+        when(fred.assets()).thenReturn(Set.of(MarketAsset.NASDAQCOM));
+        when(btc.assets()).thenReturn(Set.of(MarketAsset.BTCUSD));
+
+        new MarketService(mapper, List.of(domestic, fred, btc)).collectDaily();
+
+        verify(domestic).fetch();
+        verify(fred).fetch();
+        verify(btc, never()).fetch();
+        verify(mapper, times(3)).save(any());
+    }
+
+    /** 跨北京时间午夜时，小时窗口仍保留包含当前小时的连续 24 格。 */
+    @Test
+    void queriesTwentyFourHourlyBuckets() {
+        var mapper = mock(MarketPriceMapper.class);
+        // 23:00 到次日 22:00（北京时间），两端均计入窗口。
+        var from = Instant.parse("2026-11-18T15:00:00Z");
+        var through = Instant.parse("2026-11-19T14:00:00Z");
+        var point = new MarketPriceMapper.HourlyPoint(through, new BigDecimal("63300"));
+        when(mapper.hourlyHistory("BTCUSD", "CoinGecko", from, through)).thenReturn(List.of(point));
+
+        var history = new MarketService(mapper, List.of())
+                .hourlyHistory(MarketAsset.BTCUSD, Instant.parse("2026-11-19T14:25:00Z"));
+
+        assertThat(history.from()).isEqualTo(from);
+        assertThat(history.through()).isEqualTo(through);
+        assertThat(history.points()).containsExactly(point);
+    }
 }

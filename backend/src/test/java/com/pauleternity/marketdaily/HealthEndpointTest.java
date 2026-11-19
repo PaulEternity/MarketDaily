@@ -3,6 +3,7 @@ package com.pauleternity.marketdaily;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pauleternity.marketdaily.market.MarketPriceMapper;
 import com.pauleternity.marketdaily.news.NewsMapper;
+import com.pauleternity.marketdaily.report.ReportMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,10 @@ class HealthEndpointTest {
     // 数据库被禁用时，替换新闻模块依赖的 Mapper。
     @MockitoBean
     private NewsMapper news;
+
+    // 健康检查本身不读取日报库。
+    @MockitoBean
+    private ReportMapper reports;
 
     @Test
     void reportsUp() {
