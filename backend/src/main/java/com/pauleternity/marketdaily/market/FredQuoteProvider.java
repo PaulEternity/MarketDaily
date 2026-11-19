@@ -1,6 +1,7 @@
 package com.pauleternity.marketdaily.market;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.pauleternity.marketdaily.shared.SourceHttp;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -15,11 +16,11 @@ import java.util.Set;
 @Component
 class FredQuoteProvider implements MarketQuoteProvider {
 
-    private final MarketHttp http;
+    private final SourceHttp http;
     private final String apiKey;
 
     /** FRED 密钥从运行环境注入。 */
-    FredQuoteProvider(MarketHttp http, @Value("${FRED_API_KEY:}") String apiKey) {
+    FredQuoteProvider(SourceHttp http, @Value("${FRED_API_KEY:}") String apiKey) {
         this.http = http;
         this.apiKey = apiKey;
     }
@@ -53,7 +54,7 @@ class FredQuoteProvider implements MarketQuoteProvider {
         BigDecimal latest = null;
         BigDecimal previous = null;
         for (JsonNode row : observations) {
-            BigDecimal price = MarketHttp.decimal(row.path("value"));
+            BigDecimal price = SourceHttp.decimal(row.path("value"));
             if (price == null || price.signum() <= 0) {
                 continue;
             }

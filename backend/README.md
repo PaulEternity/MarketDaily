@@ -48,7 +48,21 @@ curl --fail-with-body http://localhost:8080/api/markets/latest
 curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 ```
 
-最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。美股以实际交易日期为准，黄金比较前后两次日度采样，BTC 和 ETH 使用来源的 24 小时变化。历史接口支持 `days=7` 或 `days=30`，数据从已采集快照累积，日期缺口会保留。
+最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。纳指也按实际交易日收盘价展示。BTC 使用来源的 24 小时变化，ETH 仅保留已采集历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
+
+## 手动采集与查询新闻
+
+新闻来源为 GDELT DOC 2.0 和美联储货币政策公告 RSS，两者均无需单独配置密钥。手动采集复用 `MARKET_ADMIN_KEY`，响应包含实际查询窗口和各来源状态。平日采集 24 小时，周末采集 72 小时。
+
+```sh
+curl --fail-with-body -X POST http://localhost:8080/api/admin/news/collect \
+  -H "X-Admin-Key: ${MARKET_ADMIN_KEY}"
+curl --fail-with-body 'http://localhost:8080/api/news?market=GOLD&page=1&size=20'
+```
+
+新闻列表默认读取最近 24 小时。可用 ISO 8601 的 `from`、`to` 指定最多 30 天的窗口，用 `GOLD`、`NASDAQ` 或 `CRYPTO` 筛选市场。`publishedAt` 是已知的发布时间，`seenAt` 是 GDELT 收录时间。相同的 `eventHash` 表示同一事件，条目仍各自保留来源和原文链接。
+
+`NEWS_GDELT_QUERY` 可覆盖检索词。`NEWS_SCORE_WEIGHTS` 依次为相关性、重要性、可信度、时效，默认 `40,30,20,10`，总和须为 100。
 
 ## 验证
 

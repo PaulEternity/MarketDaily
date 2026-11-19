@@ -31,7 +31,7 @@ class MarketServiceTest {
         when(fred.fetch()).thenThrow(new IllegalStateException());
         when(gold.fetch()).thenReturn(Map.of(MarketAsset.XAUUSD, new Quote(new BigDecimal("2100"),
                 null, null, null, DAY, Instant.parse("2026-11-19T00:00:00Z"))));
-        when(mapper.previousGoldSample(DAY)).thenReturn(new MarketSnapshot("XAUUSD", "黄金",
+        when(mapper.previousDailySample("XAUUSD", "Gold API", DAY)).thenReturn(new MarketSnapshot("XAUUSD", "黄金",
                 new BigDecimal("2000"), null, null, null, "USD", "PREVIOUS_DAILY_SAMPLE", DAY.minusDays(1),
                 Instant.parse("2026-11-18T00:00:00Z"), Instant.parse("2026-11-18T00:00:00Z"),
                 DAY.minusDays(1), "Gold API", "AVAILABLE"));
@@ -57,7 +57,9 @@ class MarketServiceTest {
             assertThat(item.freshness()).isEqualTo("STALE");
             assertThat(item.quote()).isEqualTo(oldQuote);
         });
-        assertThat(latest).filteredOn(item -> item.symbol().equals("ETHUSD")).singleElement()
+        assertThat(latest).extracting(MarketService.Latest::symbol)
+                .containsExactly("XAUUSD", "AU9999", "XAGUSD", "NASDAQCOM", "BTCUSD");
+        assertThat(latest).filteredOn(item -> item.symbol().equals("XAGUSD")).singleElement()
                 .satisfies(item -> assertThat(item.freshness()).isEqualTo("MISSING"));
     }
 }

@@ -9,7 +9,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +49,7 @@ class MarketService {
 
     /** 按固定资产顺序返回最新报价、数据新旧及当天的采集状态。 */
     List<Latest> latest(LocalDate day) {
-        return Arrays.stream(MarketAsset.values()).map(asset -> {
+        return MarketAsset.ACTIVE.stream().map(asset -> {
             MarketSnapshot today = prices.onDate(asset.name(), asset.source, day);
             MarketSnapshot quote = today != null && today.price() != null ? today
                     : prices.latestBefore(asset.name(), asset.source, day);
@@ -60,13 +59,13 @@ class MarketService {
         }).toList();
     }
 
-    /** FRED 展示最近可用的交易日，其他资产的跨日旧报价明确标记为过期。 */
+    /** 收盘价按最近交易日展示，日度采样和滚动报价则标记跨日旧值。 */
     private String freshness(MarketAsset asset, MarketSnapshot quote, LocalDate day) {
         if (quote == null) {
             return "MISSING";
         }
         boolean sameReportDay = day.equals(quote.reportDate());
-        boolean currentMarketDate = asset == MarketAsset.NASDAQCOM || day.equals(quote.marketDate());
+        boolean currentMarketDate = "PREVIOUS_TRADING_CLOSE".equals(asset.comparisonType) || day.equals(quote.marketDate());
         return sameReportDay && currentMarketDate && "AVAILABLE".equals(quote.status()) ? "CURRENT" : "STALE";
     }
 
@@ -83,18 +82,18 @@ class MarketService {
 
     /** 保存单一资产的结果，失败或者缺少比较值时使用空值。 */
     private void save(MarketAsset asset, Quote quote, LocalDate day) {
-        // 只有黄金的上一可比值来自本地，另两类比较口径由来源定义。
+        // 国际金银的上一可比值来自本地，交易日收盘及滚动涨跌以各来源数据为准。
         BigDecimal previous = quote == null ? null : quote.previousPrice();
         BigDecimal change = quote == null ? null : quote.changeAmount();
         BigDecimal percent = quote == null ? null : quote.changePercent();
-        if (quote != null && asset == MarketAsset.XAUUSD && day.equals(quote.marketDate())) {
-            MarketSnapshot earlier = prices.previousGoldSample(day);
+        if (quote != null && "PREVIOUS_DAILY_SAMPLE".equals(asset.comparisonType) && day.equals(quote.marketDate())) {
+            MarketSnapshot earlier = prices.previousDailySample(asset.name(), asset.source, day);
             if (earlier != null && earlier.observedAt() != null && earlier.price().signum() > 0
                     && earlier.observedAt().isBefore(quote.observedAt())) {
                 previous = earlier.price();
             }
         }
-        if (quote != null && previous != null && asset != MarketAsset.BTCUSD && asset != MarketAsset.ETHUSD) {
+        if (quote != null && previous != null && !"ROLLING_24_HOURS".equals(asset.comparisonType)) {
             change = quote.price().subtract(previous);
             percent = change.movePointRight(2).divide(previous, 6, RoundingMode.HALF_UP);
         }

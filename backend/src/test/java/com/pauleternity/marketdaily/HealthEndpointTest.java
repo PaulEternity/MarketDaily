@@ -2,6 +2,7 @@ package com.pauleternity.marketdaily;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pauleternity.marketdaily.market.MarketPriceMapper;
+import com.pauleternity.marketdaily.news.NewsMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +24,10 @@ class HealthEndpointTest {
     // 此冒烟测试不启动数据库，为行情服务提供 Mapper 占位。
     @MockitoBean
     private MarketPriceMapper marketPrices;
+
+    // 数据库被禁用时，替换新闻模块依赖的 Mapper。
+    @MockitoBean
+    private NewsMapper news;
 
     @Test
     void reportsUp() {

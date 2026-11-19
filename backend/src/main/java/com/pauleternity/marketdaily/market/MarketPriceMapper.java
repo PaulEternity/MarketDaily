@@ -57,14 +57,15 @@ public interface MarketPriceMapper {
     MarketSnapshot latestBefore(@Param("symbol") String symbol, @Param("source") String source,
                                 @Param("day") LocalDate day);
 
-    /** 黄金只用此前实际发生在采样日的最新报价作日度对比。 */
+    /** 国际金银仅使用同一资产、同一来源此前实际发生在采样日的报价。 */
     @Select("SELECT " + COLUMNS + """
             FROM market_price
-            WHERE asset_symbol = 'XAUUSD' AND source = 'Gold API' AND report_date < #{day}
+            WHERE asset_symbol = #{symbol} AND source = #{source} AND report_date < #{day}
               AND market_date = report_date AND price IS NOT NULL
             ORDER BY report_date DESC LIMIT 1
             """)
-    MarketSnapshot previousGoldSample(@Param("day") LocalDate day);
+    MarketSnapshot previousDailySample(@Param("symbol") String symbol, @Param("source") String source,
+                                       @Param("day") LocalDate day);
 
     /** 读取日期窗口内的有效快照，重复交易日优先采用最近采集的结果。 */
     @Select("SELECT " + COLUMNS + """

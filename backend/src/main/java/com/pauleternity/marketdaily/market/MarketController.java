@@ -1,6 +1,6 @@
 package com.pauleternity.marketdaily.market;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.pauleternity.marketdaily.shared.AdminKey;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,8 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -23,10 +21,10 @@ import java.util.List;
 class MarketController {
 
     private final MarketService markets;
-    private final String adminKey;
+    private final AdminKey adminKey;
 
     /** 管理密钥为空时禁用手动采集。 */
-    MarketController(MarketService markets, @Value("${MARKET_ADMIN_KEY:}") String adminKey) {
+    MarketController(MarketService markets, AdminKey adminKey) {
         this.markets = markets;
         this.adminKey = adminKey;
     }
@@ -51,10 +49,7 @@ class MarketController {
     @PostMapping("/api/admin/markets/collect")
     Result<List<MarketService.Latest>> collect(
             @RequestHeader(name = "X-Admin-Key", required = false) String suppliedKey) {
-        if (adminKey.isBlank() || suppliedKey == null || !MessageDigest.isEqual(
-                adminKey.getBytes(StandardCharsets.UTF_8), suppliedKey.getBytes(StandardCharsets.UTF_8))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "手动采集未授权");
-        }
+        adminKey.require(suppliedKey);
         return Result.ok(markets.collect(LocalDate.now(MarketAsset.REPORT_ZONE)));
     }
 
