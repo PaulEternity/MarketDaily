@@ -1,11 +1,13 @@
 package com.pauleternity.marketdaily;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.pauleternity.marketdaily.market.MarketPriceMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,6 +19,10 @@ class HealthEndpointTest {
 
     @Autowired
     private TestRestTemplate client;
+
+    // 此冒烟测试不启动数据库，为行情服务提供 Mapper 占位。
+    @MockitoBean
+    private MarketPriceMapper marketPrices;
 
     @Test
     void reportsUp() {
