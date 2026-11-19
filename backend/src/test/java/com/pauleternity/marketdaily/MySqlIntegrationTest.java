@@ -1,8 +1,8 @@
 package com.pauleternity.marketdaily;
 
-import com.pauleternity.marketdaily.knowledge.KnowledgeTermMapper;
-import com.pauleternity.marketdaily.market.MarketPriceMapper;
-import com.pauleternity.marketdaily.market.MarketSnapshot;
+import com.pauleternity.marketdaily.mapper.KnowledgeTermMapper;
+import com.pauleternity.marketdaily.mapper.MarketPriceMapper;
+import com.pauleternity.marketdaily.model.market.MarketSnapshot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;

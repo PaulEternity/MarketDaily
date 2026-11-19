@@ -1,8 +1,14 @@
 # MarketDaily 后端
 
-需要 Java 21。将 `JAVA_HOME` 指向 JDK 21，并在 `backend` 目录运行命令。首次运行时，Maven Wrapper 会下载 Maven 和项目依赖。Linux 和 macOS 使用 `./mvnw`。
+## 代码目录
+
+从一次 HTTP 请求读代码时，可以先找 `controller` 里的路由，再沿同名业务的 `service` 查处理流程。读写数据库的 SQL 在 `mapper`，响应对象和查询模型在 `model`。外部行情、新闻和 AI 模型的调用在 `client`。
+
+例如，查询行情趋势可以从 `controller/MarketController` 的 `history` 入手，依次查看 `service/market/MarketService`、`mapper/MarketPriceMapper` 和 `model/market/MarketHistory`。
 
 ## 本地开发
+
+需要 Java 21。将 `JAVA_HOME` 指向 JDK 21，并在 `backend` 目录运行命令。首次运行时，Maven Wrapper 会下载 Maven 和项目依赖。Linux 和 macOS 使用 `./mvnw`。
 
 在已有的 MySQL 8.0 或 8.4 实例中创建数据库。使用的账号需要对该库有迁移和读写权限。
 

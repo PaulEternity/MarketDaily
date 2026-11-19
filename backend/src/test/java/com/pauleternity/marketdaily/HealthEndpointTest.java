@@ -1,9 +1,9 @@
 package com.pauleternity.marketdaily;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.pauleternity.marketdaily.market.MarketPriceMapper;
-import com.pauleternity.marketdaily.news.NewsMapper;
-import com.pauleternity.marketdaily.report.ReportMapper;
+import com.pauleternity.marketdaily.mapper.MarketPriceMapper;
+import com.pauleternity.marketdaily.mapper.NewsMapper;
+import com.pauleternity.marketdaily.mapper.ReportMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
