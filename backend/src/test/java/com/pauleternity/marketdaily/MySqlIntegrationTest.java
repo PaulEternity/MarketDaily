@@ -2,7 +2,12 @@ package com.pauleternity.marketdaily;
 
 import com.pauleternity.marketdaily.mapper.KnowledgeTermMapper;
 import com.pauleternity.marketdaily.mapper.MarketPriceMapper;
+import com.pauleternity.marketdaily.mapper.NewsMapper;
 import com.pauleternity.marketdaily.model.market.MarketSnapshot;
+import com.pauleternity.marketdaily.model.news.NewsArticle;
+import com.pauleternity.marketdaily.model.news.NewsItem;
+import com.pauleternity.marketdaily.model.news.NewsMarket;
+import com.pauleternity.marketdaily.service.news.NewsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,6 +39,12 @@ class MySqlIntegrationTest {
 
     @Autowired
     private MarketPriceMapper marketPrices;
+
+    @Autowired
+    private NewsMapper news;
+
+    @Autowired
+    private NewsService newsService;
 
     @Test
     void migratesMySqlAndReadsSeededKnowledge() {
@@ -72,5 +84,42 @@ class MySqlIntegrationTest {
         assertThat(stored.collectedAt()).isEqualTo(observed);
         assertThat(stored.status()).isEqualTo("FAILED");
         assertThat(marketPrices.history("XAUUSD", "Gold API", day.minusDays(6), day)).containsExactly(stored);
+    }
+
+    /** 要点先选高分事件，再按时间排序，全部报道仍保留同事件的多个来源。 */
+    @Test
+    @Transactional
+    void listsDistinctHighlightsAndChronologicalReports() {
+        // 使用固定历史窗口，避免与每日采集数据相互影响。
+        Instant through = Instant.parse("2000-02-02T12:00:00Z");
+        saveNews(500, 900, through.minusSeconds(7200), 95, null);
+        saveNews(501, 900, through.minusSeconds(1800), 80, NewsMarket.GOLD);
+        saveNews(502, 901, through.minusSeconds(3600), 90, NewsMarket.GOLD);
+        saveNews(503, 902, through.minusSeconds(1000), 99, NewsMarket.CRYPTO);
+        saveNews(504, 903, through.minusSeconds(90_000), 99, NewsMarket.GOLD);
+
+        assertThat(newsService.highlights(through, NewsMarket.GOLD)).extracting(NewsItem::title)
+                .containsExactly("报道 502", "报道 500");
+        assertThat(newsService.highlights(through, NewsMarket.GOLD).getLast().markets()).containsExactly(NewsMarket.GOLD);
+
+        Instant from = through.minusSeconds(86_400);
+        assertThat(newsService.page(from, through, NewsMarket.GOLD, 1, 10, true).items()).extracting(NewsItem::title)
+                .containsExactly("报道 501", "报道 502", "报道 500");
+        assertThat(newsService.page(from, through, NewsMarket.GOLD, 1, 10, false).items()).extracting(NewsItem::title)
+                .containsExactly("报道 500", "报道 502", "报道 501");
+    }
+
+    /** 写入指定事件和可选市场关系，新闻时间同时用于生成查询列。 */
+    private void saveNews(int id, int event, Instant at, int score, NewsMarket market) {
+        // 测试编号填满哈希列，便于让两篇独立报道共享同一个事件。
+        String urlHash = String.format("%064x", id);
+        String eventHash = String.format("%064x", event);
+        Set<NewsMarket> markets = market == null ? Set.of() : Set.of(market);
+        news.save(new NewsArticle("报道 " + id, "报道 " + id, "https://example.test/" + id,
+                urlHash, "example.test", "zh", null, at, null, at, at, eventHash,
+                BigDecimal.valueOf(score), markets));
+        if (market != null) {
+            news.saveMarket(news.byUrl(urlHash).id(), market);
+        }
     }
 }

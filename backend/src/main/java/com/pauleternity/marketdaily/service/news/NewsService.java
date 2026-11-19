@@ -7,6 +7,7 @@ import com.pauleternity.marketdaily.model.news.NewsCollectionResult;
 import com.pauleternity.marketdaily.model.news.NewsItem;
 import com.pauleternity.marketdaily.model.news.NewsMarket;
 import com.pauleternity.marketdaily.model.news.NewsPage;
+import com.pauleternity.marketdaily.model.news.NewsRow;
 import com.pauleternity.marketdaily.model.news.NewsSourceResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,8 @@ public class NewsService {
 
     private static final Logger log = LoggerFactory.getLogger(NewsService.class);
     private static final ZoneId REPORT_ZONE = ZoneId.of("Asia/Shanghai");
+    // 时间线每个市场最多展示八个不同事件，控制首屏阅读量。
+    private static final int HIGHLIGHT_LIMIT = 8;
 
     private final List<NewsFeed> feeds;
     private final NewsFilterService filter;
@@ -94,16 +97,31 @@ public class NewsService {
     }
 
     /** 按明确起止时间读取匹配新闻和总数。 */
-    public NewsPage page(Instant from, Instant through, NewsMarket market, int page, int size) {
+    public NewsPage page(Instant from, Instant through, NewsMarket market, int page, int size, boolean recentFirst) {
         long total = mapper.count(from, through, market);
         // 用 long 计算页偏移，防止 int 页码乘以页大小时溢出。
         long offset = (page - 1L) * size;
-        List<NewsItem> items = offset >= total ? List.of() : mapper.page(from, through, market, size, offset).stream()
-                .map(row -> new NewsItem(row.id(), row.title(), row.url(), row.source(), row.language(), row.summary(),
-                        row.publishedAt(), row.seenAt(), row.collectedAt(), row.eventHash(), row.score(),
-                        row.selected(), row.markets() == null ? List.of() : Arrays.stream(row.markets().split(","))
-                                .map(NewsMarket::valueOf).toList()))
-                .toList();
-        return new NewsPage(from, through, page, size, total, items);
+        if (offset >= total) {
+            return new NewsPage(from, through, page, size, total, List.of());
+        }
+        // 全部报道用时间排序，现有调用仍可以按重要度读取。
+        List<NewsRow> rows = recentFirst ? mapper.recentPage(from, through, market, size, offset)
+                : mapper.page(from, through, market, size, offset);
+        return new NewsPage(from, through, page, size, total, rows.stream().map(this::toItem).toList());
+    }
+
+    /** 读取截至指定时刻的最近 24 小时事件代表报道。 */
+    public List<NewsItem> highlights(Instant through, NewsMarket market) {
+        return mapper.highlights(through.minus(Duration.ofHours(24)), through, market, HIGHLIGHT_LIMIT)
+                .stream().map(this::toItem).toList();
+    }
+
+    /** 将共同的查询结果转换为带来源和市场标签的报道。 */
+    private NewsItem toItem(NewsRow row) {
+        // MyBatis 返回事件关联市场的逗号分隔值，缺少分类时返回空数组。
+        List<NewsMarket> markets = row.markets() == null ? List.of() : Arrays.stream(row.markets().split(","))
+                .map(NewsMarket::valueOf).toList();
+        return new NewsItem(row.id(), row.title(), row.url(), row.source(), row.language(), row.summary(),
+                row.publishedAt(), row.seenAt(), row.collectedAt(), row.eventHash(), row.score(), row.selected(), markets);
     }
 }

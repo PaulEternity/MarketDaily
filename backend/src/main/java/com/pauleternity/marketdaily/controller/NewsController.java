@@ -2,6 +2,7 @@ package com.pauleternity.marketdaily.controller;
 
 import com.pauleternity.marketdaily.model.ApiResult;
 import com.pauleternity.marketdaily.model.news.NewsCollectionResult;
+import com.pauleternity.marketdaily.model.news.NewsItem;
 import com.pauleternity.marketdaily.model.news.NewsMarket;
 import com.pauleternity.marketdaily.model.news.NewsPage;
 import com.pauleternity.marketdaily.service.news.NewsService;
@@ -19,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 /** 新闻查询 API 和受管理密钥保护的手动采集入口。 */
 @RestController
@@ -43,11 +45,12 @@ public class NewsController {
                                   @RequestParam(name = "from", required = false) Instant from,
                                   @RequestParam(name = "to", required = false) Instant to,
                                   @RequestParam(name = "page", defaultValue = "1") int page,
-                                  @RequestParam(name = "size", defaultValue = "20") int size) {
+                                  @RequestParam(name = "size", defaultValue = "20") int size,
+                                  @RequestParam(name = "sort", defaultValue = "importance") String sort) {
         // 起止时间为 UTC 时间戳，限制单次查询最多跨 30 天。
-        Instant through = to == null ? Instant.now() : to;
-        if (through.isBefore(MIN_DATE) || through.isAfter(MAX_DATE)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新闻结束时间超出范围");
+        Instant through = endTime(to);
+        if (!"recent".equals(sort) && !"importance".equals(sort)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新闻排序仅支持 recent 或 importance");
         }
         Instant since = from == null ? through.minus(Duration.ofHours(24)) : from;
         Duration width = Duration.between(since, through);
@@ -55,7 +58,23 @@ public class NewsController {
                 || width.compareTo(Duration.ofDays(30)) > 0 || since.isBefore(MIN_DATE)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "页码、页大小或新闻时间窗口无效");
         }
-        return ApiResult.ok(news.page(since, through, market, page, size));
+        return ApiResult.ok(news.page(since, through, market, page, size, "recent".equals(sort)));
+    }
+
+    /** 返回用于首页时间线的最近 24 小时新闻要点。 */
+    @GetMapping("/api/news/highlights")
+    ApiResult<List<NewsItem>> highlights(@RequestParam(name = "market", required = false) NewsMarket market,
+                                         @RequestParam(name = "to", required = false) Instant to) {
+        return ApiResult.ok(news.highlights(endTime(to), market));
+    }
+
+    /** 统一校验要点与报道共用的查询结束时刻。 */
+    private Instant endTime(Instant to) {
+        Instant through = to == null ? Instant.now() : to;
+        if (through.isBefore(MIN_DATE) || through.isAfter(MAX_DATE)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "新闻结束时间超出范围");
+        }
+        return through;
     }
 
     /** 一次采集允许一个来源失败，响应包含实际窗口和逐来源状态。 */

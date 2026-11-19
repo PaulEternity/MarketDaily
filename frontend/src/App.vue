@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import NewsPanel from './NewsPanel.vue'
 import ReportPanel from './ReportPanel.vue'
-import { useRequest, type History, type HourlyHistory, type Latest, type Market, type NewsPage, type SymbolCode } from './api'
+import { useRequest, type History, type HourlyHistory, type Latest, type SymbolCode } from './api'
 
 /** 市场工作台。只读接口独立加载，部分来源异常仍可浏览其余模块。 */
 
@@ -17,14 +18,7 @@ const assets = [
   { code: 'NASDAQCOM', label: '纳斯达克综合指数', symbol: 'IXIC', glyph: 'N', color: '#3956b4', tint: '#e9edfd', source: 'FRED', unit: '点', compare: '较上个交易日收盘' },
   { code: 'BTCUSD', label: '比特币', symbol: 'BTC', glyph: '₿', color: '#a14d15', tint: '#fbebdc', source: 'CoinGecko', unit: 'USD', compare: '24 小时涨跌' },
 ] as const
-const markets = [
-  { code: '', label: '全部市场' },
-  { code: 'GOLD', label: '黄金' },
-  { code: 'NASDAQ', label: '纳斯达克' },
-  { code: 'CRYPTO', label: '加密货币' },
-] as const
 
-// 趋势区与新闻区各自保留筛选条件。刷新时更新新闻分页锚点。
 const selectedAsset = ref<SymbolCode>('XAUUSD')
 // 保留用户选择的趋势窗口。仅有日行情的品种自动回到 7 日视图。
 const trendRange = ref<'24h' | 7 | 30>(7)
@@ -33,10 +27,8 @@ const intradayAssets = new Set<SymbolCode>(['XAUUSD', 'AU9999', 'XAGUSD', 'AGTD'
 const isDelayedMetal = computed(() => selectedAsset.value === 'AU9999' || selectedAsset.value === 'AGTD')
 const canShowHourly = computed(() => intradayAssets.has(selectedAsset.value))
 const activeRange = computed(() => trendRange.value === '24h' && !canShowHourly.value ? 7 : trendRange.value)
-const selectedMarket = ref<Market | ''>('')
-const newsPage = ref(1)
-const newsSize = 6
-const newsHours = ref<24 | 72>(24)
+// 记录新闻面板的加载状态，用于整页刷新按钮。
+const loadingNews = ref(true)
 const anchor = ref(new Date())
 const refreshVersion = ref(0)
 
@@ -77,14 +69,6 @@ const asset = computed(() => assets.find(item => item.code === selectedAsset.val
 const { data: latest, pending: loadingQuotes, error: quoteError } = useRequest<Latest[]>('/api/markets/latest', refreshVersion)
 const { data: history, pending: loadingHistory, error: historyError } = useRequest<History | HourlyHistory>(
   () => `/api/markets/${selectedAsset.value}/${activeRange.value === '24h' ? 'hourly' : 'history?days=' + activeRange.value}`, refreshVersion)
-const { data: news, pending: loadingNews, error: newsError } = useRequest<NewsPage>(() => {
-  // 分页期间共用同一个起止时刻，防止结果随时钟移动。
-  const to = anchor.value
-  const from = new Date(to.getTime() - newsHours.value * 3_600_000)
-  const params = new URLSearchParams({ page: String(newsPage.value), size: String(newsSize), from: from.toISOString(), to: to.toISOString() })
-  if (selectedMarket.value) params.set('market', selectedMarket.value)
-  return `/api/news?${params}`
-}, refreshVersion)
 
 const quotes = computed(() => new Map(latest.value?.map(item => [item.symbol, item])))
 const cards = computed(() => assets.map(item => ({ ...item, data: quotes.value.get(item.code) })))
@@ -97,20 +81,11 @@ const today = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full', timeZone: 'A
 const timestamp = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' })
 const price = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const percent = new Intl.NumberFormat('zh-CN', { signDisplay: 'exceptZero', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const pageCount = computed(() => Math.max(1, Math.ceil((news.value?.total ?? 0) / newsSize)))
 const refreshing = computed(() => loadingQuotes.value || loadingHistory.value || loadingNews.value)
-
-/** 切换新闻筛选时回到第一页。 */
-function filterNews(market: Market | '', hours: 24 | 72) {
-  selectedMarket.value = market
-  newsHours.value = hours
-  newsPage.value = 1
-}
 
 /** 重新读取后端已存数据，不触发外部采集。 */
 function refresh() {
   anchor.value = new Date()
-  newsPage.value = 1
   refreshVersion.value++
 }
 
@@ -135,16 +110,6 @@ function sourceState(item?: Latest): { text: string; tone: string } {
   if (item.freshness === 'STALE') return { text: '历史报价', tone: 'warning' }
   if (item.freshness === 'CURRENT' && item.quote?.price != null) return { text: '已采集', tone: 'positive' }
   return { text: '待采集', tone: 'muted' }
-}
-
-/** 只为合法的原文 HTTP(S) 链接生成可点击入口。 */
-function safeUrl(value: string) {
-  try {
-    const url = new URL(value)
-    return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined
-  } catch {
-    return undefined
-  }
 }
 </script>
 
@@ -252,51 +217,7 @@ function safeUrl(value: string) {
 
       <ReportPanel :refresh="refreshVersion" />
 
-      <section id="news" class="panel news-panel" aria-labelledby="news-title" :aria-busy="loadingNews">
-        <div class="panel-heading">
-          <div><h2 id="news-title">市场新闻</h2><p>按重要性排序，可查看原文与新闻时间。</p></div>
-          <div class="segmented" role="group" aria-label="新闻时间范围">
-            <button type="button" :aria-pressed="newsHours === 24" @click="filterNews(selectedMarket, 24)">24 小时</button>
-            <button type="button" :aria-pressed="newsHours === 72" @click="filterNews(selectedMarket, 72)">72 小时</button>
-          </div>
-        </div>
-        <div class="categories" role="group" aria-label="市场分类">
-          <button v-for="market in markets" :key="market.code" type="button"
-                  :aria-pressed="selectedMarket === market.code" @click="filterNews(market.code, newsHours)">{{ market.label }}</button>
-        </div>
-        <p v-if="loadingNews || newsError || !news?.items.length" class="news-empty" role="status">
-          {{ loadingNews ? '正在读取新闻' : newsError ? '新闻读取失败，可以刷新数据重试。' : '当前时间范围内暂无新闻。' }}
-        </p>
-        <ol v-else class="news-list">
-          <li v-for="item in news.items" :key="item.id">
-            <article>
-              <div>
-                <div class="news-meta">
-                  <span>{{ item.source }}</span>
-                  <span v-if="dateTime(item.publishedAt)">发布 {{ dateTime(item.publishedAt) }}</span>
-                  <span v-else-if="dateTime(item.seenAt)">收录 {{ dateTime(item.seenAt) }}</span>
-                  <span v-if="item.selected">已被日报引用</span>
-                </div>
-                <h3>{{ item.title }}</h3>
-                <p v-if="item.summary">{{ item.summary }}</p>
-                <div class="news-meta">
-                  <span v-for="market in item.markets" :key="market" class="market-tag">{{ markets.find(entry => entry.code === market)?.label }}</span>
-                </div>
-              </div>
-              <div class="article-actions">
-                <span>重要度 <strong>{{ item.score }}</strong></span>
-                <a v-if="safeUrl(item.url)" :href="safeUrl(item.url)" target="_blank" rel="noopener noreferrer"
-                   :aria-label="'查看原文：' + item.title">查看原文 <span aria-hidden="true">↗</span></a>
-              </div>
-            </article>
-          </li>
-        </ol>
-        <nav v-if="news && !loadingNews && !newsError && news.total > 0" class="pagination" aria-label="新闻分页">
-          <button type="button" :disabled="newsPage <= 1" @click="newsPage--">上一页</button>
-          <span>第 {{ newsPage }} / {{ pageCount }} 页</span>
-          <button type="button" :disabled="newsPage >= pageCount" @click="newsPage++">下一页</button>
-        </nav>
-      </section>
+      <NewsPanel :anchor="anchor" :refresh="refreshVersion" @loading="loadingNews = $event" />
       <footer>MarketDaily <span>市场信息仅供参考</span></footer>
     </main>
   </div>

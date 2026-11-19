@@ -39,20 +39,23 @@ export interface HourlyHistory {
 }
 
 /** 新闻优先显示真实发布时间，其次明确标记收录时间。 */
+export interface NewsItem {
+  id: number
+  title: string
+  url: string
+  source: string
+  summary: string | null
+  publishedAt: string | null
+  seenAt: string | null
+  score: number
+  selected: boolean
+  markets: Market[]
+}
+
+/** 全部报道的分页结果，total 统计当前筛选下的报道数。 */
 export interface NewsPage {
   total: number
-  items: {
-    id: number
-    title: string
-    url: string
-    source: string
-    summary: string | null
-    publishedAt: string | null
-    seenAt: string | null
-    score: number
-    selected: boolean
-    markets: Market[]
-  }[]
+  items: NewsItem[]
 }
 
 /** 对任意只读接口维护独立状态。切换筛选时取消旧请求，避免晚到的响应覆盖结果。 */

@@ -29,6 +29,15 @@ public interface NewsMapper {
             </if>
             """;
 
+    // 列顺序和 NewsRow 构造器一致。归并事件的全部市场标签用于前端筛选和展示。
+    String ROW_COLUMNS = """
+            n.id, n.title, n.url, n.source, n.language, n.short_description, n.published_at,
+            n.source_seen_at, n.collected_at, n.event_hash, n.importance_score, n.is_selected,
+            (SELECT GROUP_CONCAT(DISTINCT rel.market_type ORDER BY rel.market_type)
+             FROM market_news linked JOIN news_market_relation rel ON rel.news_id = linked.id
+             WHERE linked.event_hash = n.event_hash)
+            """;
+
     /** 规范链接唯一，重复采集保留原有事件归属、首次采集时间和 AI 引用状态。 */
     @Insert("""
             INSERT INTO market_news
@@ -73,16 +82,45 @@ public interface NewsMapper {
     /** 返回指定页的可追溯文章，分数相同以时间和 ID 保持稳定排序。 */
     @Select("""
             <script>
-            SELECT n.id, n.title, n.url, n.source, n.language, n.short_description, n.published_at,
-                   n.source_seen_at, n.collected_at, n.event_hash, n.importance_score, n.is_selected,
-                   (SELECT GROUP_CONCAT(DISTINCT rel.market_type ORDER BY rel.market_type)
-                    FROM market_news linked JOIN news_market_relation rel ON rel.news_id = linked.id
-                    WHERE linked.event_hash = n.event_hash)
-            """ + WINDOW + """
+            SELECT
+            """ + ROW_COLUMNS + WINDOW + """
             ORDER BY n.importance_score DESC, n.news_at DESC, n.id DESC
             LIMIT #{limit} OFFSET #{offset}
             </script>
             """)
     List<NewsRow> page(@Param("from") Instant from, @Param("through") Instant through, @Param("market") NewsMarket market,
                    @Param("limit") int limit, @Param("offset") long offset);
+
+    /** 全部报道按发布时间或收录时间倒序，保留同一事件的不同来源。 */
+    @Select("""
+            <script>
+            SELECT
+            """ + ROW_COLUMNS + WINDOW + """
+            ORDER BY n.news_at DESC, n.id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<NewsRow> recentPage(@Param("from") Instant from, @Param("through") Instant through,
+                             @Param("market") NewsMarket market, @Param("limit") int limit, @Param("offset") long offset);
+
+    /** 每个事件保留分数最高的报道，选出最重要的事件后按时间倒序显示。 */
+    @Select("""
+            <script>
+            WITH ranked AS (
+                SELECT n.id, n.importance_score, n.news_at, ROW_NUMBER() OVER (
+                    PARTITION BY n.event_hash ORDER BY n.importance_score DESC, n.news_at DESC, n.id DESC
+                ) AS event_rank
+            """ + WINDOW + """
+            ), picked AS (
+                SELECT id FROM ranked WHERE event_rank = 1
+                ORDER BY importance_score DESC, news_at DESC, id DESC LIMIT #{limit}
+            )
+            SELECT
+            """ + ROW_COLUMNS + """
+            FROM market_news n JOIN picked ON picked.id = n.id
+            ORDER BY n.news_at DESC, n.id DESC
+            </script>
+            """)
+    List<NewsRow> highlights(@Param("from") Instant from, @Param("through") Instant through,
+                             @Param("market") NewsMarket market, @Param("limit") int limit);
 }
