@@ -48,7 +48,7 @@ curl --fail-with-body http://localhost:8080/api/markets/latest
 curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 ```
 
-最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。纳指也按实际交易日收盘价展示。BTC 使用来源的 24 小时变化，ETH 仅保留已采集历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
+最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每金衡盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。国内白银（`AGTD`）使用上海黄金交易所 Ag(T+D) 最近交易日收盘价，单位为人民币每千克。纳指也按实际交易日收盘价展示。BTC 使用来源的 24 小时变化，ETH 仅保留已采集历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
 
 ## 手动采集与查询新闻
 

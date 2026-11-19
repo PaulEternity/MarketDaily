@@ -1,7 +1,7 @@
 import { shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 /** 服务端支持的行情资产和新闻分类。 */
-export type SymbolCode = 'XAUUSD' | 'AU9999' | 'XAGUSD' | 'NASDAQCOM' | 'BTCUSD'
+export type SymbolCode = 'XAUUSD' | 'AU9999' | 'XAGUSD' | 'AGTD' | 'NASDAQCOM' | 'BTCUSD'
 export type Market = 'GOLD' | 'NASDAQ' | 'CRYPTO'
 
 /** UTC 时间戳与市场日期分开，休市日的报价保留原始日期。 */

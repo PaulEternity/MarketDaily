@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRequest, type History, type Latest, type Market, type NewsPage, type SymbolCode } from './api'
 
 /** 市场工作台。只读接口独立加载，部分来源异常仍可浏览其余模块。 */
@@ -12,6 +12,7 @@ const assets = [
   { code: 'XAUUSD', label: '国际现货黄金', symbol: 'XAU', glyph: 'Au', color: '#9a681c', tint: '#f9efd8', source: 'Gold API', unit: 'USD/oz', compare: '较上次日度采样' },
   { code: 'AU9999', label: '国内黄金', symbol: 'Au99.99', glyph: 'Au', color: '#956824', tint: '#f9efd8', source: '上海黄金交易所', unit: 'CNY/g', compare: '较上个交易日收盘' },
   { code: 'XAGUSD', label: '国际现货白银', symbol: 'XAG', glyph: 'Ag', color: '#4d657e', tint: '#e8eef5', source: 'Gold API', unit: 'USD/oz', compare: '较上次日度采样' },
+  { code: 'AGTD', label: '国内白银', symbol: 'Ag(T+D)', glyph: 'Ag', color: '#4d657e', tint: '#e8eef5', source: '上海黄金交易所', unit: 'CNY/kg', compare: '较上个交易日收盘' },
   { code: 'NASDAQCOM', label: '纳斯达克综合指数', symbol: 'IXIC', glyph: 'N', color: '#3956b4', tint: '#e9edfd', source: 'FRED', unit: '点', compare: '较上个交易日收盘' },
   { code: 'BTCUSD', label: '比特币', symbol: 'BTC', glyph: '₿', color: '#a14d15', tint: '#fbebdc', source: 'CoinGecko', unit: 'USD', compare: '24 小时涨跌' },
 ] as const
@@ -31,6 +32,39 @@ const newsSize = 6
 const newsHours = ref<24 | 72>(24)
 const anchor = ref(new Date())
 const refreshVersion = ref(0)
+
+// 滑动边界由容器真实宽度和滚动位置计算，窗口变化时同步更新。
+const quoteRail = ref<HTMLDivElement>()
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
+let quoteResize: ResizeObserver | undefined
+
+/** 判断左右滑动按钮是否还有可滚动内容。 */
+function updateQuoteRail() {
+  const rail = quoteRail.value
+  if (!rail) return
+  canScrollLeft.value = rail.scrollLeft > 1
+  canScrollRight.value = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 1
+}
+
+/** 每次滑过一张行情卡片，保留触屏原生滑动。 */
+function scrollQuotes(direction: -1 | 1) {
+  const rail = quoteRail.value
+  const card = rail?.firstElementChild?.getBoundingClientRect()
+  if (!rail || !card) return
+  // 卡片间距参与单次滚动距离，单位是 CSS 像素。
+  const gap = parseFloat(getComputedStyle(rail).columnGap) || 0
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  rail.scrollBy({ left: direction * (card.width + gap), behavior: reducedMotion ? 'instant' : 'smooth' })
+}
+
+onMounted(() => {
+  if (!quoteRail.value) return
+  quoteResize = new ResizeObserver(updateQuoteRail)
+  quoteResize.observe(quoteRail.value)
+  updateQuoteRail()
+})
+onBeforeUnmount(() => quoteResize?.disconnect())
 
 const asset = computed(() => assets.find(item => item.code === selectedAsset.value) ?? assets[0])
 const { data: latest, pending: loadingQuotes, error: quoteError } = useRequest<Latest[]>('/api/markets/latest', refreshVersion)
@@ -138,10 +172,18 @@ function safeUrl(value: string) {
       <section aria-labelledby="quotes-title" class="quotes-section" :aria-busy="loadingQuotes">
         <div class="section-heading">
           <h2 id="quotes-title">市场行情</h2>
-          <span>{{ newestQuote ? '最近行情采集 ' + dateTime(newestQuote) : '暂无行情采集时间' }}</span>
+          <div class="quote-tools">
+            <span>{{ newestQuote ? '最近行情采集 ' + dateTime(newestQuote) : '暂无行情采集时间' }}</span>
+            <div class="quote-arrows" role="group" aria-label="滑动行情卡片">
+              <button type="button" aria-label="向左滑动行情" aria-controls="quote-rail" :disabled="!canScrollLeft"
+                      @click="scrollQuotes(-1)">‹</button>
+              <button type="button" aria-label="向右滑动行情" aria-controls="quote-rail" :disabled="!canScrollRight"
+                      @click="scrollQuotes(1)">›</button>
+            </div>
+          </div>
         </div>
         <p v-if="quoteError" class="inline-alert" role="status">行情读取失败，可以点击“刷新数据”重试。</p>
-        <div class="quotes-grid">
+        <div id="quote-rail" ref="quoteRail" class="quotes-grid" aria-describedby="quote-units" @scroll.passive="updateQuoteRail">
           <button v-for="card in cards" :key="card.code" type="button" class="quote-card"
                   :aria-pressed="selectedAsset === card.code"
                   :style="{ '--asset-color': card.color, '--asset-tint': card.tint }"
@@ -165,6 +207,7 @@ function safeUrl(value: string) {
             </span>
           </button>
         </div>
+        <p id="quote-units" class="quote-unit-note">USD/oz＝美元／金衡盎司，1 金衡盎司约 31.1035 克。CNY/g＝人民币元／克，CNY/kg＝人民币元／千克。</p>
       </section>
 
       <div class="market-detail">

@@ -11,18 +11,21 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
-/** 提取上海黄金交易所每日行情表的 Au99.99 收盘价。 */
+/** 从上海黄金交易所每日行情表提取指定合约的收盘价。 */
 final class SgeDailyTable {
 
-    /** 交易日当地日期及人民币每克收盘价。 */
+    /** 本地交易日期及收盘价，报价单位由合约定义。 */
     record Close(LocalDate date, BigDecimal price) {
     }
 
-    /** 仅从官方每日行情表取最后两条可用的不同交易日收盘记录。 */
-    static List<Close> recentCloses(String html, LocalDate through) {
+    /** 为每个合约取最近两个不同交易日的有效收盘记录。 */
+    static Map<String, List<Close>> recentCloses(String html, LocalDate through, Set<String> contracts) {
         var callback = new DailyRows();
         try {
             new ParserDelegator().parse(new StringReader(html), callback, true);
@@ -32,34 +35,38 @@ final class SgeDailyTable {
 
         // 用表头名称定位字段，避免表格插入列时把其他价格误当作收盘价。
         if (callback.rows.isEmpty()) {
-            return List.of();
+            return Map.of();
         }
         List<String> header = callback.rows.getFirst();
         int dateIndex = header.indexOf("日期");
         int contractIndex = header.indexOf("合约");
         int closeIndex = header.indexOf("收盘价");
         if (dateIndex < 0 || contractIndex < 0 || closeIndex < 0) {
-            return List.of();
+            return Map.of();
         }
 
-        // 交易日倒序，按日期去重，即使上游顺序变化也不影响涨跌比较。
-        var closes = new TreeMap<LocalDate, BigDecimal>(Comparator.reverseOrder());
+        // 按合约分别取交易日倒序结果，避免把金银同日记录互相覆盖。
+        var closes = new HashMap<String, TreeMap<LocalDate, BigDecimal>>();
         int lastIndex = Math.max(dateIndex, Math.max(contractIndex, closeIndex));
         for (List<String> row : callback.rows.subList(1, callback.rows.size())) {
-            if (row.size() <= lastIndex || !"Au99.99".equals(row.get(contractIndex))) {
+            if (row.size() <= lastIndex || !contracts.contains(row.get(contractIndex))) {
                 continue;
             }
             try {
                 LocalDate date = LocalDate.parse(row.get(dateIndex));
                 BigDecimal price = new BigDecimal(row.get(closeIndex).replace(",", ""));
                 if (!date.isAfter(through) && price.signum() > 0) {
-                    closes.putIfAbsent(date, price);
+                    closes.computeIfAbsent(row.get(contractIndex), ignored -> new TreeMap<>(Comparator.reverseOrder()))
+                            .putIfAbsent(date, price);
                 }
             } catch (DateTimeParseException | NumberFormatException ignored) {
                 // 休市或无成交行不参与收盘比较。
             }
         }
-        return closes.entrySet().stream().limit(2).map(e -> new Close(e.getKey(), e.getValue())).toList();
+        var result = new HashMap<String, List<Close>>();
+        closes.forEach((contract, prices) -> result.put(contract, prices.entrySet().stream().limit(2)
+                .map(e -> new Close(e.getKey(), e.getValue())).toList()));
+        return result;
     }
 
     /** 只记录带 daily_new_table 标记的目标表格，忽略其他布局表。 */

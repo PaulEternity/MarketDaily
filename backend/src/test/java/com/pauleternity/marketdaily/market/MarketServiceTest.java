@@ -58,7 +58,7 @@ class MarketServiceTest {
             assertThat(item.quote()).isEqualTo(oldQuote);
         });
         assertThat(latest).extracting(MarketService.Latest::symbol)
-                .containsExactly("XAUUSD", "AU9999", "XAGUSD", "NASDAQCOM", "BTCUSD");
+                .containsExactly("XAUUSD", "AU9999", "XAGUSD", "AGTD", "NASDAQCOM", "BTCUSD");
         assertThat(latest).filteredOn(item -> item.symbol().equals("XAGUSD")).singleElement()
                 .satisfies(item -> assertThat(item.freshness()).isEqualTo("MISSING"));
     }

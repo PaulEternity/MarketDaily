@@ -46,22 +46,32 @@ class MarketProvidersTest {
         assertThat(quotes.get(MarketAsset.XAGUSD).price()).isEqualByComparingTo("45.43");
     }
 
-    /** 国内黄金从上金所 Au99.99 收盘列读入，按实际交易日期比较。 */
+    /** 上金所金银同日记录分别取收盘价，按各自的交易日期比较。 */
     @Test
-    void parsesDomesticGoldCloseWithoutInventingIntradayTime() {
+    void parsesDomesticMetalClosesByContract() {
         var http = mockHttp("""
                 <table class="daily_new_table">
                   <tr><th>日期</th><th>合约</th><th>开盘价</th><th>收盘价</th></tr>
                   <tr><td>2026-01-06</td><td>Au99.99</td><td>850.02</td><td>848.05</td></tr>
+                  <tr><td>2026-01-06</td><td>Ag(T+D)</td><td>10,200</td><td>10,250</td></tr>
                   <tr><td>2026-01-08</td><td>Au99.95</td><td>855.00</td><td>856.00</td></tr>
                   <tr><td>2026-01-07</td><td>Au99.99</td><td>846.02</td><td>849.20</td></tr>
+                  <tr><td>2026-01-07</td><td>Ag(T+D)</td><td>10,250</td><td>10,312</td></tr>
                 </table>
                 """);
-        var quote = new SgeGoldQuoteProvider(http).fetch().get(MarketAsset.AU9999);
+        // 同一份上金所响应需要返回两种资产的独立报价。
+        var quotes = new SgeQuoteProvider(http).fetch();
+        assertThat(quotes).containsOnlyKeys(MarketAsset.AU9999, MarketAsset.AGTD);
+        var quote = quotes.get(MarketAsset.AU9999);
         assertThat(quote.price()).isEqualByComparingTo("849.20");
         assertThat(quote.previousPrice()).isEqualByComparingTo("848.05");
         assertThat(quote.marketDate()).isEqualTo(LocalDate.of(2026, 1, 7));
         assertThat(quote.observedAt()).isNull();
+        var silver = quotes.get(MarketAsset.AGTD);
+        assertThat(silver.price()).isEqualByComparingTo("10312");
+        assertThat(silver.previousPrice()).isEqualByComparingTo("10250");
+        assertThat(silver.marketDate()).isEqualTo(LocalDate.of(2026, 1, 7));
+        assertThat(silver.observedAt()).isNull();
     }
 
     /** FRED 休市缺值不会变成 0，也不会把交易日补成猜测的收盘时刻。 */
