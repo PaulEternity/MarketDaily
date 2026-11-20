@@ -103,3 +103,45 @@ $env:MARKETDAILY_DB_TEST = 'true'
 .\mvnw.cmd clean verify
 Remove-Item Env:MARKETDAILY_DB_TEST, Env:MYSQL_DATABASE
 ```
+
+## 黄金走势信号
+
+`GET /api/markets/gold-signals` 返回 Au99.99、XAU/USD 和 COMEX GC 最近 72 个完整自然小时的已入库 K 线、最近七条日线和突破统计。时间点为 UTC，前端转北京时间。旧版小时报价继续用于原行情趋势图。
+
+- Au99.99 默认在北京时间 08:40、18:40 从上金所每日行情补最近 30 天的日 OHLC 和双向成交量（千克）。国内小时线及分时成交量使用授权数据导入。
+- XAU/USD 配置 `GOLD_OHLC_API_KEY` 后，每小时第 12 分钟用 [Gold API OHLC](https://gold-api.com/llms.txt) 补最近 3 根已收盘小时线及最近 5 个 UTC 日历日内缺失的工作日线。未配置时仍可导入。国际现货没有全球成交量字段。
+- COMEX GC 以授权数据导入，按同一个 UTC 小时对照 XAU/USD。成交量以单向合约手数计。两个定时任务分别用 `GOLD_SGE_DAILY_CRON`、`GOLD_OHLC_CRON` 配置，设为 `-` 可关闭。
+
+把授权行情转换成 JSON 数组后，可以用同一管理密钥导入。每批最多 1000 根，重复导入会更新相同品种、周期、来源和时间的记录。
+
+```sh
+curl --fail-with-body -X POST 'http://localhost:8080/api/admin/markets/gold-bars' \
+  -H "X-Admin-Key: ${MARKET_ADMIN_KEY}" \
+  -H 'Content-Type: application/json' --data-binary @gold-bars.json
+```
+
+可保存为 `gold-bars.json` 的数组示例（数字仅用于说明格式）：
+
+```json
+[
+  {
+    "symbol": "GC",
+    "period": "HOUR",
+    "source": "授权供应商名称",
+    "startTime": "2026-11-19T13:00:00Z",
+    "tradingDate": "2026-11-19",
+    "openPrice": 4000,
+    "highPrice": 4010,
+    "lowPrice": 3990,
+    "closePrice": 4005,
+    "volume": 1000,
+    "buyVolume": 500,
+    "sellVolume": 450
+  }
+]
+```
+
+- `symbol` 为 `AU9999`、`XAUUSD` 或 `GC`。小时线用整点 UTC 桶起点。Au99.99 和 GC 的 `tradingDate` 取源数据的实际交易归属，夜盘尤其不能按显示日期推断。XAU/USD 用 UTC 日期。
+- 日线用 `period: "DAY"`，`startTime` 填该交易日期对应的 UTC 午夜作为主键，和实际开盘时间无关。Au99.99 日线须等北京时间 15:30 后发布，其余日线须在该 UTC 日期结束后导入。日线参照取早于当前交易日的最近一条已入库有效日线。
+- Au99.99 小时成交量使用单向千克，日成交量使用双向千克，日线不填主动方向。GC 成交量使用单向手数。XAU/USD 不填成交量。方向未知时两个主动量都留空，只有总量和两个方向齐全时才计算余量。
+- 同一品种的小时图一次只显示一个来源，当前选择最近一根小时线的来源。补历史时请统一来源名。国内优先用上金所官方日线作参照，国际用同来源日线。日线缺失可能使参照回退到更早的有效交易日。

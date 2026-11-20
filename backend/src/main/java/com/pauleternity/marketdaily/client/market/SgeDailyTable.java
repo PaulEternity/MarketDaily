@@ -1,5 +1,9 @@
 package com.pauleternity.marketdaily.client.market;
 
+import com.pauleternity.marketdaily.model.market.GoldSignals.Bar;
+import com.pauleternity.marketdaily.model.market.GoldSignals.Period;
+import com.pauleternity.marketdaily.model.market.GoldSignals.Symbol;
+
 import javax.swing.text.MutableAttributeSet;
 import javax.swing.text.html.HTML;
 import javax.swing.text.html.HTMLEditorKit;
@@ -9,6 +13,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,6 +68,40 @@ final class SgeDailyTable {
         closes.forEach((contract, prices) -> result.put(contract, prices.entrySet().stream().limit(2)
                 .map(e -> new Close(e.getKey(), e.getValue())).toList()));
         return result;
+    }
+
+    /** 读取 Au99.99 正式日行情的 OHLC 和以千克计的双向成交量。 */
+    static List<Bar> goldDailyBars(String html, String source, LocalDate through) {
+        var rows = parseRows(html, true);
+        if (rows.isEmpty()) return List.of();
+        // 下标依次对应日期、合约、开高低收和成交量，兼容收益等附加列。
+        var columns = List.of("日期", "合约", "开盘价", "最高价", "最低价", "收盘价", "成交量（kg）")
+                .stream().map(rows.getFirst()::indexOf).toList();
+        if (columns.contains(-1)) return List.of();
+        int lastColumn = columns.stream().mapToInt(Integer::intValue).max().orElseThrow();
+        var result = new ArrayList<Bar>();
+        for (var row : rows.subList(1, rows.size())) {
+            if (row.size() <= lastColumn || !"Au99.99".equals(row.get(columns.get(1)))) continue;
+            try {
+                LocalDate date = LocalDate.parse(row.get(columns.get(0)));
+                // 休市和无成交日不当作上一有效交易日。
+                BigDecimal volume = number(row, columns.get(6));
+                if (!date.isAfter(through) && volume.signum() > 0) {
+                    result.add(new Bar(Symbol.AU9999, Period.DAY, source,
+                            date.atStartOfDay().toInstant(ZoneOffset.UTC), date,
+                            number(row, columns.get(2)), number(row, columns.get(3)),
+                            number(row, columns.get(4)), number(row, columns.get(5)), volume, null, null));
+                }
+            } catch (DateTimeParseException | NumberFormatException ignored) {
+                // 不使用缺字段和非行情行。
+            }
+        }
+        return result;
+    }
+
+    /** 读取支持千位分隔的日行情数值。 */
+    private static BigDecimal number(List<String> row, int index) {
+        return new BigDecimal(row.get(index).replace(",", ""));
     }
 
     /** 从延时报价的表头定位合约和最新价列，过滤无效及未开盘报价。 */

@@ -1,5 +1,7 @@
 package com.pauleternity.marketdaily.model.report;
 
+import com.pauleternity.marketdaily.model.market.GoldSignals.Breakouts;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -17,7 +19,26 @@ public record ReportContent(Analysis analysis, Input input) {
     }
 
     /** 同一业务日发送给模型的行情和精选新闻。 */
-    public record Input(LocalDate date, List<Price> prices, List<Article> news) {
+    public record Input(LocalDate date, List<Price> prices, List<Article> news, List<GoldEvidence> goldSignals) {
+        /** 兼容没有黄金统计的历史快照和调用方。 */
+        public Input {
+            goldSignals = goldSignals == null ? List.of() : goldSignals;
+        }
+
+        /** 构造未包含黄金统计的输入。 */
+        public Input(LocalDate date, List<Price> prices, List<Article> news) {
+            this(date, prices, news, List.of());
+        }
+    }
+
+    /** 给日报的已计算事实，保留来源、统计样本数和成交量时间口径。 */
+    public record GoldEvidence(String symbol, String hourlySource, int availableHours, Breakouts breakouts,
+                               LatestVolume latestVolume) {
+    }
+
+    /** 单条量价证据，国内日量按双向千克，COMEX 小时量按单向手数。 */
+    public record LatestVolume(String source, String period, String unit, LocalDate tradingDate, Instant startTime,
+                               BigDecimal volume, BigDecimal buyVolume, BigDecimal sellVolume) {
     }
 
     /** 按来源保留价格、实际交易日和涨跌口径，缺失行情以空值表达。 */

@@ -87,3 +87,31 @@ export function useRequest<T>(url: MaybeRefOrGetter<string>, refresh: MaybeRefOr
 
   return { data, pending, error }
 }
+
+/** 黄金真正的已完成 K 线，缺失的成交字段为空，日期沿用交易归属。 */
+export interface GoldBar {
+  source: string
+  startTime: string
+  tradingDate: string
+  openPrice: number
+  highPrice: number
+  lowPrice: number
+  closePrice: number
+  volume: number | null
+  buyVolume: number | null
+  sellVolume: number | null
+  netVolume: number | null
+  unknownVolume: number | null
+}
+
+/** 看板统一查询窗口；突破只统计具有前日参照的小时数据。 */
+export interface GoldSignals {
+  symbol: 'AU9999' | 'XAUUSD' | 'GC'
+  unit: string
+  volumeUnit: string | null
+  from: string
+  to: string
+  hourly: GoldBar[]
+  daily: GoldBar[]
+  breakouts: { comparedHours: number; highBreaks: number; highCloses: number; lowBreaks: number; lowCloses: number }
+}

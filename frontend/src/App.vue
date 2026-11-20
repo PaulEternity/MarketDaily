@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import GoldSignalsPanel from './GoldSignalsPanel.vue'
 import NewsPanel from './NewsPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import { useRequest, type History, type HourlyHistory, type Latest, type SymbolCode } from './api'
@@ -124,6 +125,7 @@ function sourceState(item?: Latest): { text: string; tone: string } {
         <a href="#overview"><span class="nav-icon" aria-hidden="true">▦</span>市场概览</a>
         <a href="#reports"><span class="nav-icon" aria-hidden="true">▧</span>AI 日报</a>
         <a href="#trend"><span class="nav-icon" aria-hidden="true">⌁</span>行情趋势</a>
+        <a href="#gold-signals"><span class="nav-icon" aria-hidden="true">◈</span>黄金走势信号</a>
         <a href="#news"><span class="nav-icon" aria-hidden="true">▤</span>市场新闻</a>
       </nav>
       <p class="sidebar-foot">报价和新闻时间均为北京时间</p>
@@ -214,6 +216,8 @@ function sourceState(item?: Latest): { text: string; tone: string } {
           </ul>
         </section>
       </div>
+
+      <GoldSignalsPanel :refresh="refreshVersion" />
 
       <ReportPanel :refresh="refreshVersion" />
 
