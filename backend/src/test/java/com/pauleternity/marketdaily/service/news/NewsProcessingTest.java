@@ -46,6 +46,20 @@ class NewsProcessingTest {
                 "en", null, null, SEEN), FROM, THROUGH, false)).isNull();
     }
 
+    @Test
+    void classifiesDomesticOfficialMarketNoticesAndMacroReleases() {
+        var notice = new NewsFeed.Item("关于做好市场风险控制工作的通知",
+                "https://www.sge.com.cn/jjsnotice/1", "zh", null, SEEN, null);
+        var release = new NewsFeed.Item("10月份国民经济运行总体平稳",
+                "https://www.stats.gov.cn/sj/zxfb/202611/t20261116_1.html", "zh", null, SEEN, null);
+        var offSite = new NewsFeed.Item(notice.title(), "https://example.org/jjsnotice/1",
+                "zh", null, SEEN, null);
+
+        assertThat(filter.filter(notice, FROM, THROUGH, false).markets()).containsExactly(NewsMarket.GOLD);
+        assertThat(filter.filter(release, FROM, THROUGH, false).markets()).containsExactly(NewsMarket.GOLD);
+        assertThat(filter.filter(offSite, FROM, THROUGH, false)).isNull();
+    }
+
     /** 同一事件的近似标题合并，不把两个 Fed 主题或不同数值合并。 */
     @Test
     void mergesOnlySimilarTitlesWithinEventWindow() {

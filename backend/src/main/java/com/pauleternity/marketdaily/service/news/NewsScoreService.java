@@ -16,7 +16,8 @@ class NewsScoreService {
     private static final Set<String> MAJOR = Set.of("rate decision", "rate cut", "rate hike", "fomc",
             "inflation report", "cpi", "nonfarm payrolls", "jobs report", "earnings", "etf approval",
             "sec approves", "crypto regulation", "利率决议", "非农", "财报", "通胀数据", "监管");
-    private static final Set<String> OFFICIAL = Set.of("federalreserve.gov", "bls.gov", "bea.gov", "sec.gov");
+    private static final Set<String> OFFICIAL = Set.of("federalreserve.gov", "bls.gov", "bea.gov", "sec.gov",
+            "sge.com.cn", "stats.gov.cn");
     private static final Set<String> ESTABLISHED = Set.of("reuters.com", "apnews.com", "bloomberg.com",
             "ft.com", "wsj.com", "cnbc.com");
 

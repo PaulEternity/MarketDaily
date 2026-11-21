@@ -62,7 +62,7 @@ curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 
 ## 手动采集与查询新闻
 
-新闻来源为 GDELT DOC 2.0 和美联储货币政策公告 RSS，两者均无需单独配置密钥。手动采集复用 `MARKET_ADMIN_KEY`，响应包含实际查询窗口和各来源状态。平日采集 24 小时，周末采集 72 小时。
+新闻来源为 GDELT DOC 2.0、美联储货币政策公告 RSS、上海黄金交易所公告（`SGE_NOTICE`）和国家统计局数据发布（`NBS_RELEASE`），均无需单独配置密钥。国内来源保存列表中的标题、原文链接和发布日期。列表只精确到日，按北京时间当天零点参与现有时间窗口查询，前端只展示日期。手动采集复用 `MARKET_ADMIN_KEY`，响应包含实际查询窗口和各来源状态。平日采集 24 小时，周末采集 72 小时。
 
 ```sh
 curl --fail-with-body -X POST http://localhost:8080/api/admin/news/collect \
@@ -88,6 +88,28 @@ curl --fail-with-body 'http://localhost:8080/api/reports?page=1&size=10'
 ```
 
 生成使用北京时间当天的行情状态和最近 24 小时去重后的新闻。成功后保存证据快照、新闻引用、模型和可用的 Token 用量。同一单实例服务里，一个业务日已有日报时会直接返回旧结果（`reused=true`），不会重新调用模型。详情可用 `GET /api/reports/{yyyy-MM-dd}` 查询。模型失败时可稍后手动重试，接口不会自动重发生成请求。
+
+### 自动日报
+
+配置模型后，将 `MARKETDAILY_REPORT_SCHEDULE_ENABLED` 设为 `true` 并重启后端。直接运行 Spring Boot 时，将该变量注入进程环境。任务按北京时间运行：
+
+- 08:15 采集行情和新闻，记录未更新的行情和失败来源。
+- 08:30 使用已有数据生成日报。错过采集时先补采，部分来源失败时仍可使用已入库的证据。
+- 09:00 检查当天缺失的日报，全天最多两次自动生成尝试。启动时超过 08:30 会按同一规则检查补跑，已保存日报直接跳过。手动生成仍可通过管理接口触发。
+
+使用以下 SQL 查询自动任务记录及对应日报的 Token 用量。任务时间戳为 UTC，模型未返回的 Token 用量显示为 `NULL`。
+
+```sql
+SELECT t.business_date, t.task_type, t.attempt_no, t.status, t.started_at,
+       t.finished_at, t.error_message, t.trace_id, r.input_tokens, r.output_tokens
+FROM task_execution t
+LEFT JOIN daily_report r ON t.task_type = 'DAILY_REPORT' AND t.status = 'SUCCESS'
+    AND t.business_date = r.report_date AND r.status = 'SUCCESS'
+ORDER BY t.business_date DESC, t.started_at DESC
+LIMIT 30;
+```
+
+自动调度按单实例运行。如果模型已经收到请求，但后端在保存日报前退出，下一次尝试仍可能产生一次模型调用。
 
 ## 验证
 

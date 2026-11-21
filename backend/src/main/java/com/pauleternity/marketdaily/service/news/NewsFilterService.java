@@ -34,6 +34,10 @@ class NewsFilterService {
     private static final Set<String> PROMOTIONS = Set.of("sponsored content", "affiliate link", "coupon code",
             "promo code", "advertorial", "paid promotion", "buy now", "广告推广", "优惠码");
     private static final Set<String> TRACKERS = Set.of("fbclid", "gclid", "msclkid", "mc_cid", "mc_eid");
+    private static final Set<String> SGE_MARKET_NOTICES = Set.of(
+            "贵金属", "风险控制", "保证金", "涨跌停板", "休市", "交易时间", "挂牌", "交割");
+    private static final Set<String> DOMESTIC_MACRO = Set.of(
+            "国民经济运行", "国内生产总值", "居民消费价格", "工业生产者出厂价格", "采购经理指数", "规模以上工业增加值");
     private static final Pattern NON_WORD = Pattern.compile("[^\\p{L}\\p{N}]+");
     private static final Pattern HTML = Pattern.compile("<[^>]*>");
 
@@ -70,6 +74,13 @@ class NewsFilterService {
         if (monetaryFeed) {
             markets.add(NewsMarket.GOLD);
             markets.add(NewsMarket.NASDAQ);
+        }
+        if (("www.sge.com.cn".equals(url.getHost()) && url.getPath().startsWith("/jjsnotice/")
+                && matchesAny(normalized, SGE_MARKET_NOTICES))
+                || ("www.stats.gov.cn".equals(url.getHost()) && url.getPath().startsWith("/sj/zxfb/")
+                && matchesAny(normalized, DOMESTIC_MACRO))) {
+            markets.add(NewsMarket.GOLD);
+            matches++;
         }
         if (markets.isEmpty()) {
             return null;

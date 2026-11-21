@@ -73,6 +73,8 @@ function displayTime(item: NewsItem, includeDay = false) {
   const timestamp = newsTime(item)
   if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return ''
   const date = new Date(timestamp)
+  if (item.publishedAt && (item.source === 'www.sge.com.cn' || item.source === 'www.stats.gov.cn')
+      && timeFormat.format(date) === '00:00') return includeDay ? dayFormat.format(date) : '仅日期'
   return includeDay ? `${dayFormat.format(date)} ${timeFormat.format(date)}` : timeFormat.format(date)
 }
 

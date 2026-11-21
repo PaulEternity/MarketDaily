@@ -1,6 +1,7 @@
 package com.pauleternity.marketdaily;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.pauleternity.marketdaily.mapper.GoldSignalMapper;
 import com.pauleternity.marketdaily.mapper.MarketPriceMapper;
 import com.pauleternity.marketdaily.mapper.NewsMapper;
 import com.pauleternity.marketdaily.mapper.ReportMapper;
@@ -25,6 +26,9 @@ class HealthEndpointTest {
     // 此冒烟测试不启动数据库，为行情服务提供 Mapper 占位。
     @MockitoBean
     private MarketPriceMapper marketPrices;
+
+    @MockitoBean
+    private GoldSignalMapper goldSignals;
 
     // 数据库被禁用时，替换新闻模块依赖的 Mapper。
     @MockitoBean
