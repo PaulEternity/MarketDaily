@@ -4,9 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pauleternity.marketdaily.shared.SourceHttp;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.http.MediaType;
@@ -26,8 +29,12 @@ import java.util.Set;
 @Conditional(Jin10NewsFeed.TokenConfigured.class)
 class Jin10NewsFeed implements NewsFeed {
 
+    private static final Logger log = LoggerFactory.getLogger(Jin10NewsFeed.class);
     private static final String ENDPOINT = "https://mcp.jin10.com/mcp";
     private static final String TOOL = "list_flash";
+    private static final String SEARCH_TOOL = "search_flash";
+    // 每项只读首屏，避免热点快讯把油价、央行决议挤出通用列表。
+    private static final List<String> MACRO_TERMS = List.of("原油", "OPEC", "美联储", "利率决议", "日本央行", "欧洲央行");
     // shortcut: 每轮最多取 8 页，新闻密度高时优先覆盖近期；需要完整窗口时接入按主题检索。
     private static final int MAX_PAGES = 8;
     // 每个 MCP 请求在 5 秒内收取对应结果，避免长期占用采集线程。
@@ -77,14 +84,8 @@ class Jin10NewsFeed implements NewsFeed {
                     reachedWindowStart = true;
                     continue;
                 }
-                // 实测快讯可省略标题，优先从正文的【标题】段提取可分类的标题。
-                String content = row.path("content").asText("").strip();
-                String title = row.path("title").asText("").strip();
-                String url = row.path("url").asText("");
-                if (!url.isBlank() && (!title.isBlank() || !content.isBlank())) {
-                    items.add(new Item(title.isBlank() ? flashTitle(content) : title, url, "zh", content,
-                            publishedAt, null));
-                }
+                Item item = flashItem(row, publishedAt);
+                if (item != null) items.add(item);
             }
             if (reachedWindowStart || rows.isEmpty() || !page.path("has_more").asBoolean()
                     || pageIndex + 1 == MAX_PAGES) {
@@ -108,7 +109,61 @@ class Jin10NewsFeed implements NewsFeed {
 
     /** 读取快讯工具结果，优先取结构化 JSON，并兼容文本封装的 JSON。 */
     private JsonNode flashPage(Map<String, String> arguments) {
-        JsonNode result = request("tools/call", Map.of("name", TOOL, "arguments", arguments));
+        return flashPage(TOOL, arguments);
+    }
+
+    /** 主题检索走独立来源，搜索失败时普通快讯仍可入库。 */
+    @Bean
+    NewsFeed jin10MacroFeed() {
+        return new NewsFeed() {
+            /** 与普通快讯分开记录来源状态。 */
+            @Override public String source() { return "JIN10_MACRO"; }
+            /** 采集主题快讯，时间窗口由新闻清洗统一校验。 */
+            @Override public List<Item> fetch(int hours) { return searchMacroFlashes(); }
+        };
+    }
+
+    /** 从运行时工具定义识别搜索词字段，逐个主题检索快讯。 */
+    private List<Item> searchMacroFlashes() {
+        String argument = null;
+        for (JsonNode tool : request("tools/list", Map.of()).path("tools")) {
+            if (!SEARCH_TOOL.equals(tool.path("name").asText())) continue;
+            var schema = tool.path("inputSchema");
+            for (String key : List.of("keyword", "query", "keywords", "q")) {
+                if ("string".equals(schema.path("properties").path(key).path("type").asText())) {
+                    argument = key;
+                    break;
+                }
+            }
+            break;
+        }
+        if (argument == null) throw new IllegalStateException("金十宏观搜索缺少搜索词参数");
+        List<Item> items = new ArrayList<>();
+        // 单个关键词失败时保留其他主题的结果，全组失败才标记来源不可用。
+        int successful = 0;
+        for (String keyword : MACRO_TERMS) {
+            JsonNode rows;
+            try {
+                rows = flashPage(SEARCH_TOOL, Map.of(argument, keyword)).path("items");
+                if (!rows.isArray()) throw new IllegalStateException("金十搜索缺少快讯列表");
+                successful++;
+            } catch (RuntimeException ex) {
+                log.warn("金十宏观快讯检索失败，关键词={}，异常={}", keyword, ex.getClass().getSimpleName());
+                continue;
+            }
+            for (JsonNode row : rows) {
+                var publishedAt = SourceHttp.instant(row.path("time"));
+                Item item = publishedAt == null ? null : flashItem(row, publishedAt);
+                if (item != null) items.add(item);
+            }
+        }
+        if (successful == 0) throw new IllegalStateException("金十宏观快讯全部检索失败");
+        return items;
+    }
+
+    /** 普通快讯和搜索结果使用同一响应格式。 */
+    private JsonNode flashPage(String tool, Map<String, String> arguments) {
+        JsonNode result = request("tools/call", Map.of("name", tool, "arguments", arguments));
         JsonNode payload = result.path("structuredContent");
         if (!payload.isObject()) {
             payload = parseJson(result.path("content").path(0).path("text").asText(""));
@@ -117,6 +172,15 @@ class Jin10NewsFeed implements NewsFeed {
             throw new IllegalStateException("金十快讯业务调用失败");
         }
         return payload.path("data");
+    }
+
+    /** 实测快讯可省略标题，优先从正文的【标题】段提取。 */
+    private static Item flashItem(JsonNode row, Instant publishedAt) {
+        String content = row.path("content").asText("").strip();
+        String title = row.path("title").asText("").strip();
+        String url = row.path("url").asText("");
+        return url.isBlank() || (title.isBlank() && content.isBlank()) ? null
+                : new Item(title.isBlank() ? flashTitle(content) : title, url, "zh", content, publishedAt, null);
     }
 
     /** 按工具输入定义选择实测游标或旧文档中的偏移参数。 */

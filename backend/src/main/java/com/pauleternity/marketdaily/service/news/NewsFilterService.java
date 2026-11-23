@@ -23,7 +23,10 @@ class NewsFilterService {
     private static final Map<NewsMarket, Set<String>> KEYWORDS = Map.of(
             NewsMarket.GOLD, Set.of("gold", "bullion", "xauusd", "federal reserve", "fed", "fomc", "inflation",
                     "interest rate", "interest rates", "rate cuts", "rate cut", "us dollar", "geopolitical risk",
-                    "cpi", "nonfarm payrolls", "黄金", "金价", "美联储", "通胀", "降息", "非农"),
+                    "cpi", "nonfarm payrolls", "黄金", "金价", "美联储", "通胀", "降息", "非农",
+                    "crude oil", "brent", "wti", "opec", "petroleum status report", "joint ministerial monitoring committee",
+                    "monetary policy", "money market operations", "policy rate", "real yield", "real yields",
+                    "原油", "油价", "布伦特", "利率决议", "加息", "实际收益率", "实际利率", "日本央行", "欧洲央行"),
             NewsMarket.NASDAQ, Set.of("nasdaq", "tech stocks", "technology stocks", "nvidia", "ai industry",
                     "federal reserve", "fed", "fomc", "inflation", "interest rate", "interest rates", "us economy",
                     "cpi", "nonfarm payrolls", "纳斯达克", "科技股", "英伟达", "美联储", "通胀", "降息", "非农"),

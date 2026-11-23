@@ -19,16 +19,27 @@ public record ReportContent(Analysis analysis, Input input) {
     }
 
     /** 同一业务日发送给模型的行情和精选新闻。 */
-    public record Input(LocalDate date, List<Price> prices, List<Article> news, List<GoldEvidence> goldSignals) {
+    public record Input(LocalDate date, List<Price> prices, List<Article> news, List<GoldEvidence> goldSignals,
+                        List<MacroObservation> macroObservations) {
         /** 兼容没有黄金统计的历史快照和调用方。 */
         public Input {
             goldSignals = goldSignals == null ? List.of() : goldSignals;
+            macroObservations = macroObservations == null ? List.of() : macroObservations;
         }
 
         /** 构造未包含黄金统计的输入。 */
         public Input(LocalDate date, List<Price> prices, List<Article> news) {
-            this(date, prices, news, List.of());
+            this(date, prices, news, List.of(), List.of());
         }
+
+        /** 兼容只提供黄金统计的调用方。 */
+        public Input(LocalDate date, List<Price> prices, List<Article> news, List<GoldEvidence> goldSignals) {
+            this(date, prices, news, goldSignals, List.of());
+        }
+    }
+
+    /** 利率观测值单位为百分数，date 是源数据观测日。 */
+    public record MacroObservation(String indicator, LocalDate date, BigDecimal percent, String source, String url) {
     }
 
     /** 给日报的已计算事实，保留来源、统计样本数和成交量时间口径。 */

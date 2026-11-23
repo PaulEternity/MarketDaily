@@ -78,6 +78,8 @@ curl --fail-with-body 'http://localhost:8080/api/news?market=GOLD&page=1&size=20
 
 配置 `JIN10_MCP_TOKEN` 后，后端会启用金十快讯（`JIN10_FLASH`），用发布时间、标题和原文链接参与同一套新闻筛选。金十每轮最多读取 8 页。资讯密集时，采集窗口内更早的快讯可能超出读取上限。可通过手动采集接口确认 `sources.JIN10_FLASH` 返回的状态和筛选数量。完成验证后，在 `.env` 中设置 `NEWS_GDELT_ENABLED=false` 并重建后端容器，即可停用 GDELT。
 
+黄金宏观新闻另收录欧洲央行 `ECB_POLICY`、日本央行 `BOJ_POLICY`、OPEC 公告 `OPEC_PRESS` 和 EIA 原油周报 `EIA_WEEKLY`。配置金十 Token 后，`JIN10_MACRO` 还会分别搜索原油、OPEC 和主要央行，每个关键词取首屏。官方列表只有日期时按来源时区日首归档。任一来源不可达时，其他新闻来源继续采集。
+
 ## AI 日报
 
 在 `.env` 设置 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL` 后，重启后端。硅基流动的 Base URL 填 `https://api.siliconflow.cn/v1`，第一版用 `Qwen/Qwen3.5-4B`。模型未配置时仍可查询既有日报。
@@ -94,6 +96,8 @@ curl --fail-with-body 'http://localhost:8080/api/reports?page=1&size=10'
 生成使用北京时间当天的行情状态和最近 24 小时去重后的新闻。成功后保存证据快照、新闻引用、模型和可用的 Token 用量。同一单实例服务里，一个业务日已有日报时会直接返回旧结果（`reused=true`），不会重新调用模型。详情可用 `GET /api/reports/{yyyy-MM-dd}` 查询。模型失败时可稍后手动重试，接口不会自动重发生成请求。
 
 新版日报的贵金属、纳指和比特币板块分别增加短期走势预判，覆盖下一交易时段、下一交易日和生成后 24 小时。板块缺少当前有效报价时显示证据不足。历史日报按已保存内容展示。
+
+新生成的日报会保存 BIS 主要经济体政策利率和 FRED `DFII10` 最近两条有效观测，包含观测日和来源。`DFII10` 复用已有的 `FRED_API_KEY`；任一数据源暂时不可用时，日报仍可按已有行情和新闻生成。
 
 ### 自动日报
 

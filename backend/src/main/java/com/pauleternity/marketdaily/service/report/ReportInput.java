@@ -26,15 +26,17 @@ class ReportInput {
     private final MarketService market;
     private final NewsMapper news;
     private final GoldSignalService gold;
+    private final MacroMarketData macro;
 
     /** 复用已有行情降级与新闻评分查询。 */
-    ReportInput(MarketService market, NewsMapper news, GoldSignalService gold) {
+    ReportInput(MarketService market, NewsMapper news, GoldSignalService gold, MacroMarketData macro) {
         this.market = market;
         this.news = news;
         this.gold = gold;
+        this.macro = macro;
     }
 
-    /** 读取当日报价及最近 24 小时新闻，不请求外部行情或新闻源。 */
+    /** 汇集已入库行情、近期新闻和最新可用利率观测。 */
     ReportContent.Input snapshot(LocalDate date, Instant through) {
         var prices = market.latest(date).stream().map(this::price).toList();
         Instant from = through.minus(Duration.ofHours(24));
@@ -55,7 +57,8 @@ class ReportInput {
         }
         // 附上同一截止时刻可查的黄金统计，不传整段 K 线给模型。
         var goldEvidence = gold.overview(through).stream().map(this::goldEvidence).toList();
-        return new ReportContent.Input(date, prices, selected.values().stream().map(this::article).toList(), goldEvidence);
+        return new ReportContent.Input(date, prices, selected.values().stream().map(this::article).toList(), goldEvidence,
+                macro.latest(date));
     }
 
     /** 优先引用最近的小时成交量，国内没有小时量时保留交易所日成交量。 */

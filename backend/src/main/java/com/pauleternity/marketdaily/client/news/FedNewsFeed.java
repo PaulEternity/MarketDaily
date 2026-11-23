@@ -42,7 +42,7 @@ class FedNewsFeed implements NewsFeed {
     }
 
     /** 只解析 RSS 元数据，拒绝 DTD 与外部实体。 */
-    List<Item> parse(String xml) {
+    static List<Item> parse(String xml) {
         try {
             var factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -52,7 +52,7 @@ class FedNewsFeed implements NewsFeed {
             String content = xml.startsWith("\uFEFF") ? xml.substring(1) : xml;
             var document = factory.newDocumentBuilder().parse(new InputSource(new StringReader(content)));
             if (!"rss".equals(document.getDocumentElement().getTagName())) {
-                throw new IllegalStateException("美联储响应不是 RSS");
+                throw new IllegalStateException("官方公告响应不是 RSS");
             }
             var entries = document.getElementsByTagName("item");
             List<Item> items = new ArrayList<>();
@@ -63,18 +63,18 @@ class FedNewsFeed implements NewsFeed {
             }
             return items;
         } catch (ParserConfigurationException | SAXException | IOException ex) {
-            throw new IllegalStateException("美联储 RSS 无法解析");
+            throw new IllegalStateException("官方公告 RSS 无法解析");
         }
     }
 
     /** 读取条目第一个同名字段，无字段时返回空串。 */
-    private String text(Element node, String tag) {
+    private static String text(Element node, String tag) {
         var value = node.getElementsByTagName(tag).item(0);
         return value == null ? "" : value.getTextContent();
     }
 
     /** 将 RSS 自带时区的发布时间转为 UTC。 */
-    private Instant publishedAt(String value) {
+    private static Instant publishedAt(String value) {
         try {
             return ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
         } catch (DateTimeParseException ex) {
