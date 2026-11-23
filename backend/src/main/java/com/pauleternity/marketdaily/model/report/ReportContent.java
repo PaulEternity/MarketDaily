@@ -10,12 +10,12 @@ import java.util.List;
 /** 日报 JSON 文档，生成结果和当时的证据一起保存。 */
 public record ReportContent(Analysis analysis, Input input) {
 
-    /** 三个市场的分析、后续观察项及原文引用 ID。 */
+    /** 三个市场的分析、短期预判、后续观察项及原文引用 ID。 */
     public record Analysis(String summary, List<Section> sections) {
     }
 
-    /** 市场代码固定，newsIds 只允许引用该市场的输入新闻。 */
-    public record Section(String market, String analysis, String watch, List<Long> newsIds) {
+    /** 市场代码固定，newsIds 只允许引用该市场的输入新闻。旧版日报的 outlook 为 null。 */
+    public record Section(String market, String analysis, String watch, List<Long> newsIds, String outlook) {
     }
 
     /** 同一业务日发送给模型的行情和精选新闻。 */

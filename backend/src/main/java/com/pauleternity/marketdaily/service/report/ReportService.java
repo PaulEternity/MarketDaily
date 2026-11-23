@@ -81,7 +81,7 @@ public class ReportService {
         return new ReportPage(page, size, reports.count(), reports.page(size, offset));
     }
 
-    /** 校验固定板块、文本长度、新闻来源及板块归属。 */
+    /** 校验固定板块、预判依据、文本长度以及新闻归属。 */
     static ReportContent.Analysis validate(JsonNode body, ReportContent.Input input) {
         if (body == null || !body.isObject()) {
             throw ReportModelClient.invalid("日报根节点必须是对象");
@@ -97,8 +97,8 @@ public class ReportService {
             if (!item.isObject()) {
                 throw ReportModelClient.invalid("日报缺少 " + market + " 板块对象");
             }
-            if (item.size() != 3) {
-                throw ReportModelClient.invalid(market + " 板块必须仅包含 analysis、watch 和 newsIds");
+            if (item.size() != 4) {
+                throw ReportModelClient.invalid(market + " 板块必须仅包含 analysis、outlook、watch 和 newsIds");
             }
             JsonNode references = item.path("newsIds");
             if (!references.isArray() || references.size() > 3) {
@@ -117,8 +117,14 @@ public class ReportService {
                 ids.add(id);
                 hasCitation = true;
             }
+            String outlook = requiredText(item.path("outlook"), market + ".outlook", 160);
+            // 仅当前市场有采集成功的可用报价时，才保存模型给出的方向判断。
+            boolean hasCurrentPrice = input.prices().stream().anyMatch(price -> market.equals(price.market())
+                    && price.price() != null && price.price().signum() > 0 && "CURRENT".equals(price.freshness())
+                    && "AVAILABLE".equals(price.collectionStatus()));
             sections.add(new ReportContent.Section(market, requiredText(item.path("analysis"), market + ".analysis", 400),
-                    requiredText(item.path("watch"), market + ".watch", 400), List.copyOf(ids)));
+                    requiredText(item.path("watch"), market + ".watch", 400), List.copyOf(ids),
+                    hasCurrentPrice ? outlook : "证据不足，暂不判断方向。"));
         }
         if (body.size() != 1 + ReportModelClient.MARKETS.size()) {
             throw ReportModelClient.invalid("日报含有未约定的顶层字段");

@@ -37,7 +37,7 @@ class ReportApiIntegrationTest {
     @MockitoBean private ReportInput input;
     @MockitoBean private ReportModelClient model;
 
-    /** 生成两次只调用一次模型，查询从 MySQL 恢复快照和引用。 */
+    /** 生成两次只调用一次模型，查询从 MySQL 恢复快照、预判和引用。 */
     @Test
     void savesAndReusesReportWithCitations() throws Exception {
         assertThat(jdbc.queryForObject("SELECT DATABASE()", String.class)).endsWith("_test");
@@ -50,9 +50,9 @@ class ReportApiIntegrationTest {
         when(input.snapshot(eq(date), any())).thenReturn(new ReportContent.Input(date, List.of(), List.of(article)));
         when(model.generate(any())).thenReturn(new ReportModelClient.Completion("report-test-only", json.readTree("""
                 {"summary":"测试总览",
-                 "GOLD":{"analysis":"有关贵金属的报道","watch":"关注收盘价","newsIds":[7]},
-                 "NASDAQ":{"analysis":"暂无纳指数据","watch":"观察下个交易日","newsIds":[]},
-                 "CRYPTO":{"analysis":"暂无比特币数据","watch":"观察下次报价","newsIds":[]}}
+                 "GOLD":{"analysis":"有关贵金属的报道","outlook":"证据不足","watch":"关注收盘价","newsIds":[7]},
+                 "NASDAQ":{"analysis":"暂无纳指数据","outlook":"证据不足","watch":"观察下个交易日","newsIds":[]},
+                 "CRYPTO":{"analysis":"暂无比特币数据","outlook":"证据不足","watch":"观察下次报价","newsIds":[]}}
                 """), 100, 80));
         var headers = new HttpHeaders();
         headers.set("X-Admin-Key", "report-test-admin");
@@ -71,6 +71,7 @@ class ReportApiIntegrationTest {
             var saved = client.getForObject("/api/reports/today", JsonNode.class).path("data").path("report");
             assertThat(saved.path("content").path("input").path("news").path(0).path("url").asText())
                     .isEqualTo("https://example.org/story");
+            assertThat(saved.at("/content/analysis/sections/0/outlook").asText()).isEqualTo("证据不足，暂不判断方向。");
             assertThat(saved.path("inputTokens").asInt()).isEqualTo(100);
             assertThat(client.getForObject("/api/reports/" + date, JsonNode.class).path("data").path("report"))
                     .isEqualTo(saved);

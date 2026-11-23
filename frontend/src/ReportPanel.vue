@@ -13,7 +13,10 @@ interface Report {
   inputTokens: number | null
   outputTokens: number | null
   content: {
-    analysis: { summary: string; sections: { market: Market; analysis: string; watch: string; newsIds: number[] }[] }
+    analysis: {
+      summary: string
+      sections: { market: Market; analysis: string; outlook?: string | null; watch: string; newsIds: number[] }[]
+    }
     input: { news: { id: number; title: string; source: string; url: string }[] }
   }
 }
@@ -38,6 +41,8 @@ const { data: history, pending: historyLoading, error: historyError } = useReque
 const report = computed(() => lookup.value?.report)
 const pageCount = computed(() => Math.max(1, Math.ceil((history.value?.total ?? 0) / historySize)))
 const labels: Record<Market, string> = { GOLD: '贵金属', NASDAQ: '纳指', CRYPTO: '比特币' }
+// 预判时段与日报提示词一致，用于展示各市场的预测范围。
+const outlookPeriods: Record<Market, string> = { GOLD: '下一交易时段', NASDAQ: '下一交易日', CRYPTO: '未来 24 小时' }
 const formatter = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai' })
 
 /** 只有快照中真实存在且可安全打开的新闻才显示为链接。 */
@@ -79,6 +84,9 @@ function references(ids: number[]) {
           <section v-for="section in report.content.analysis.sections" :key="section.market" class="report-section">
             <h3>{{ labels[section.market] }}</h3>
             <p>{{ section.analysis }}</p>
+            <p v-if="section.outlook" class="report-outlook">
+              <strong>走势预判 · {{ outlookPeriods[section.market] }}</strong> {{ section.outlook }}
+            </p>
             <p class="report-watch"><strong>观察点</strong> {{ section.watch }}</p>
             <ul v-if="references(section.newsIds).length" class="report-links" aria-label="原文引用">
               <li v-for="article in references(section.newsIds)" :key="article.id">
@@ -123,8 +131,8 @@ function references(ids: number[]) {
 .report-section { padding: 11px 1px; border-bottom: 1px solid var(--border); }
 .report-main h3 { margin: 4px 0; font-size: 15px; }
 .report-main p, .report-links { overflow-wrap: anywhere; }
-.report-watch, .report-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.report-watch strong { color: var(--ink); margin-right: 4px; }
+.report-outlook, .report-watch, .report-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.report-outlook strong, .report-watch strong { color: var(--ink); margin-right: 4px; }
 .report-signature { margin-top: 9px; }
 .report-links, .report-history ul { list-style: none; padding: 0; margin: 5px 0 0; }
 .report-links a { color: var(--accent); text-decoration: underline; font-size: 12px; }
