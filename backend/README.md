@@ -58,6 +58,8 @@ curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 
 国际现货金银、BTC 和国内金银支持 `GET /api/markets/{symbol}/hourly`。每小时第 5 分钟采集国际现货金银和 BTC，按来源时间归档，手动采集也会写入这三项的小时数据。国内金银在上金所常规交易时段采集延时最新价，按北京时间采集小时归档。小时记录自启用后积累。
 
+看板通过 `GET /api/markets/exchange-rate` 单独读取 USD/CNY 参考汇率。优先使用中国银行美元折算价，失败时用已配置的 `FRED_API_KEY` 查询 DEXCHUS。后端对成功结果缓存 30 分钟，暂时失败时可沿用进程内最近 14 天的有效汇率。看板在原币报价下显示国际黄金元/克、国际白银元/千克及 BTC 人民币参考价，BTC 按 `1 USDT ≈ 1 USD` 估算。换算仅用于最新行情展示。
+
 国内金银日收盘价和 FRED 纳斯达克综合指数默认每天北京时间 08:30、18:30 更新。环境变量 `MARKET_HOURLY_CRON` 和 `MARKET_DAILY_CRON` 可覆盖对应的采集时间，设为 `-` 可关闭相应定时任务。
 
 ## 手动采集与查询新闻

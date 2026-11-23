@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 
 import GoldSignalsPanel from './GoldSignalsPanel.vue'
 import NewsPanel from './NewsPanel.vue'
 import ReportPanel from './ReportPanel.vue'
-import { useRequest, type History, type HourlyHistory, type Latest, type SymbolCode } from './api'
+import { useRequest, type CnyReferenceRate, type History, type HourlyHistory, type Latest, type SymbolCode } from './api'
 
 /** 市场工作台。只读接口独立加载，部分来源异常仍可浏览其余模块。 */
 
@@ -69,11 +69,16 @@ onBeforeUnmount(() => quoteResize?.disconnect())
 
 const asset = computed(() => assets.find(item => item.code === selectedAsset.value) ?? assets[0])
 const { data: latest, pending: loadingQuotes, error: quoteError } = useRequest<Latest[]>('/api/markets/latest', refreshVersion)
+// 汇率单独读取，失败只影响人民币参考价，原币报价仍按行情接口渲染。
+const { data: referenceRate, error: rateError } = useRequest<CnyReferenceRate>('/api/markets/exchange-rate', refreshVersion)
 const { data: history, pending: loadingHistory, error: historyError } = useRequest<History | HourlyHistory>(
   () => `/api/markets/${selectedAsset.value}/${activeRange.value === '24h' ? 'hourly' : 'history?days=' + activeRange.value}`, refreshVersion)
 
 const quotes = computed(() => new Map(latest.value?.map(item => [item.symbol, item])))
-const cards = computed(() => assets.map(item => ({ ...item, data: quotes.value.get(item.code) })))
+const cards = computed(() => assets.map(item => {
+  const data = quotes.value.get(item.code)
+  return { ...item, data, cny: cnyEquivalent(item.code, data?.quote?.price) }
+}))
 const availableCount = computed(() => cards.value.filter(item => item.data?.quote?.price != null).length)
 const newestQuote = computed(() => latest.value?.reduce<string | null>((last, item) => {
   const candidate = item.quote?.collectedAt
@@ -85,7 +90,22 @@ const price = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximum
 const percent = new Intl.NumberFormat('zh-CN', { signDisplay: 'exceptZero', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const refreshing = computed(() => loadingQuotes.value || loadingHistory.value || loadingNews.value)
 
-/** 重新读取后端已存数据，不触发外部采集。 */
+/** 用当前参考汇率计算国际金银及比特币的人民币展示价。 */
+function cnyEquivalent(symbol: SymbolCode, originalPrice?: number | null) {
+  const cnyPerUsd = referenceRate.value?.cnyPerUsd
+  if (originalPrice == null || !cnyPerUsd || cnyPerUsd <= 0) return null
+  // 贵金属原价以每金衡盎司计，使用精确克重转换；USDT 以 1:1 美元近似折算。
+  const gramsPerTroyOunce = 31.1034768
+  const cny = originalPrice * cnyPerUsd
+  switch (symbol) {
+    case 'XAUUSD': return { amount: cny / gramsPerTroyOunce, unit: '元/克' }
+    case 'XAGUSD': return { amount: cny * 1000 / gramsPerTroyOunce, unit: '元/千克' }
+    case 'BTCUSDT': return { amount: cny, unit: '元' }
+    default: return null
+  }
+}
+
+/** 重新读取看板数据，参考汇率由后端按缓存周期更新。 */
 function refresh() {
   anchor.value = new Date()
   refreshVersion.value++
@@ -172,6 +192,7 @@ function sourceState(item?: Latest): { text: string; tone: string } {
               {{ card.data?.quote?.price == null ? '—' : price.format(card.data.quote.price) }}
               <small>{{ card.data?.unit ?? card.unit }}</small>
             </span>
+            <span v-if="card.cny" class="quote-reference">约 {{ price.format(card.cny.amount) }} {{ card.cny.unit }}</span>
             <span class="quote-change">
               <strong :class="(card.data?.quote?.changePercent ?? 0) > 0 ? 'up' : (card.data?.quote?.changePercent ?? 0) < 0 ? 'down' : ''">
                 {{ change(card.data?.quote?.changePercent) }}
@@ -184,6 +205,10 @@ function sourceState(item?: Latest): { text: string; tone: string } {
           </button>
         </div>
         <p id="quote-units" class="quote-unit-note">USD/oz＝美元／金衡盎司，1 金衡盎司约 31.1035 克。CNY/g＝人民币元／克，CNY/kg＝人民币元／千克。</p>
+        <p v-if="referenceRate" class="quote-unit-note">
+          换算汇率 {{ referenceRate.source }} · {{ referenceRate.date }} · 1 USD = {{ referenceRate.cnyPerUsd }} CNY。BTC 按 1 USDT ≈ 1 USD 估算。
+        </p>
+        <p v-else-if="rateError" class="quote-unit-note">人民币参考汇率暂不可用。</p>
       </section>
 
       <div class="market-detail">

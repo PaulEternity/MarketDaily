@@ -22,6 +22,13 @@ export interface Latest {
   quote: Quote | null
 }
 
+/** 看板估算使用的每美元人民币汇率、来源和报价日。 */
+export interface CnyReferenceRate {
+  cnyPerUsd: number
+  date: string
+  source: string
+}
+
 /** 历史窗口首尾均包含，points 只含服务端已有记录。 */
 export interface History {
   unit: string
