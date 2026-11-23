@@ -30,7 +30,7 @@ $env:MYSQL_PASSWORD = $credential.GetNetworkCredential().Password
 
 ## 服务器部署
 
-在服务器检出要部署的版本，进入 `backend` 目录。首次部署可用 `install -m 600 .env.example .env` 建立配置，已有 `.env` 时继续使用原文件。填写 `MYSQL_PASSWORD`、`FRED_API_KEY`、`COINGECKO_API_KEY` 和 `MARKET_ADMIN_KEY`。已有 MySQL 数据卷时，MySQL 用户和密码应与原先一致。
+在服务器检出要部署的版本，进入 `backend` 目录。首次部署可用 `install -m 600 .env.example .env` 建立配置，已有 `.env` 时继续使用原文件。填写 `MYSQL_PASSWORD`、`FRED_API_KEY` 和 `MARKET_ADMIN_KEY`。已有 MySQL 数据卷时，MySQL 用户和密码应与原先一致。
 
 ```sh
 docker compose config --quiet
@@ -45,7 +45,7 @@ Compose 构建后端镜像并启动 MySQL 8.4，数据库数据保存在已有�
 
 ## 手动采集与查询行情
 
-启动后端前，将 `MARKET_ADMIN_KEY`、`FRED_API_KEY` 和 `COINGECKO_API_KEY` 设置到后端进程的环境。Gold API 无需密钥。未配置的行情来源会显示采集失败，其他来源仍会执行。`.env.example` 列出了配置项，直接启动 Spring Boot 时需将它们注入进程环境。
+启动后端前，将 `MARKET_ADMIN_KEY` 和 `FRED_API_KEY` 设置到后端进程的环境。Gold API 和币安公开行情无需密钥。未配置密钥的 FRED 行情会显示采集失败，其他来源仍会执行。`.env.example` 列出了配置项，直接启动 Spring Boot 时需将它们注入进程环境。
 
 ```sh
 curl --fail-with-body -X POST http://localhost:8080/api/admin/markets/collect \
@@ -54,7 +54,7 @@ curl --fail-with-body http://localhost:8080/api/markets/latest
 curl --fail-with-body 'http://localhost:8080/api/markets/XAUUSD/history?days=7'
 ```
 
-最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每金衡盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。国内白银（`AGTD`）使用上海黄金交易所 Ag(T+D) 最近交易日收盘价，单位为人民币每千克。纳指也按实际交易日收盘价展示。BTC 使用来源的 24 小时变化，ETH 仅保留已采集历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
+最新行情用 `freshness` 标识当前报价、旧值或缺失，用 `collectionStatus` 标识当天是否采集成功。国际黄金（`XAUUSD`）与白银（`XAGUSD`）以美元每金衡盎司计价，比较前后两次同品种日度采样。国内黄金（`AU9999`）使用上海黄金交易所 Au99.99 最近交易日收盘价，单位为人民币每克。国内白银（`AGTD`）使用上海黄金交易所 Ag(T+D) 最近交易日收盘价，单位为人民币每千克。纳指也按实际交易日收盘价展示。比特币使用币安 `BTCUSDT` 现货报价和滚动 24 小时涨跌，以 USDT 计价。原 CoinGecko `BTCUSD` 日线和小时数据可继续按原标的查询，`ETHUSD` 保留日线历史。历史接口支持 `days=7` 或 `days=30`，日期缺口会保留。
 
 国际现货金银、BTC 和国内金银支持 `GET /api/markets/{symbol}/hourly`。每小时第 5 分钟采集国际现货金银和 BTC，按来源时间归档，手动采集也会写入这三项的小时数据。国内金银在上金所常规交易时段采集延时最新价，按北京时间采集小时归档。小时记录自启用后积累。
 
@@ -73,6 +73,8 @@ curl --fail-with-body 'http://localhost:8080/api/news?market=GOLD&page=1&size=20
 新闻列表默认读取最近 24 小时。可用 ISO 8601 的 `from`、`to` 指定最多 30 天的窗口，用 `GOLD`、`NASDAQ` 或 `CRYPTO` 筛选市场。`publishedAt` 是已知的发布时间，`seenAt` 是 GDELT 收录时间。相同的 `eventHash` 表示同一事件，条目仍各自保留来源和原文链接。
 
 `NEWS_GDELT_QUERY` 可覆盖检索词。`NEWS_SCORE_WEIGHTS` 依次为相关性、重要性、可信度、时效，默认 `40,30,20,10`，总和须为 100。
+
+配置 `JIN10_MCP_TOKEN` 后，后端会启用金十快讯（`JIN10_FLASH`），用发布时间、标题和原文链接参与同一套新闻筛选。金十每轮最多读取 8 页。资讯密集时，采集窗口内更早的快讯可能超出读取上限。可通过手动采集接口确认 `sources.JIN10_FLASH` 返回的状态和筛选数量。完成验证后，在 `.env` 中设置 `NEWS_GDELT_ENABLED=false` 并重建后端容器，即可停用 GDELT。
 
 ## AI 日报
 

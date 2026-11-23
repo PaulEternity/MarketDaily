@@ -46,9 +46,8 @@ class SgeDelayedSampler {
         // 北京时间用于交易时段，UTC 时刻用于归档和跨时区查询。
         var local = sampledAt.atZone(MarketAsset.REPORT_ZONE);
         // 夜盘以开盘所在日判断；周六凌晨可以属于周五夜盘。
-        var sessionDate = local.toLocalTime().isBefore(LocalTime.of(2, 30))
-                ? local.toLocalDate().minusDays(1) : local.toLocalDate();
-        if (!inSession(local, sessionDate)) {
+        var sessionDate = SgeTradingHours.sessionDate(local);
+        if (!SgeTradingHours.inSession(local, sessionDate)) {
             return;
         }
 
@@ -70,17 +69,6 @@ class SgeDelayedSampler {
             var asset = SgeQuoteProvider.CONTRACTS.get(contract);
             prices.saveHourly(asset.name(), asset.source(), hour, sampledAt, price);
         });
-    }
-
-    /** 判断北京时间是否落在上金所常规日盘或夜盘的交易时段。 */
-    private boolean inSession(ZonedDateTime local, LocalDate sessionDate) {
-        if (sessionDate.getDayOfWeek().getValue() > DayOfWeek.FRIDAY.getValue()) {
-            return false;
-        }
-        var time = local.toLocalTime();
-        return time.isBefore(LocalTime.of(2, 30)) || !time.isBefore(LocalTime.of(20, 0))
-                || (!time.isBefore(LocalTime.of(9, 0)) && time.isBefore(LocalTime.of(11, 30)))
-                || (!time.isBefore(LocalTime.of(13, 30)) && time.isBefore(LocalTime.of(15, 30)));
     }
 
     /** 日盘要求同日页面；夜盘兼容开盘日和归属的下一交易日期。 */

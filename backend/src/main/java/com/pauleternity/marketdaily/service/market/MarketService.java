@@ -2,6 +2,7 @@ package com.pauleternity.marketdaily.service.market;
 
 import com.pauleternity.marketdaily.client.market.MarketQuoteProvider;
 import com.pauleternity.marketdaily.client.market.MarketQuoteProvider.Quote;
+import com.pauleternity.marketdaily.client.market.SgeTradingHours;
 import com.pauleternity.marketdaily.mapper.MarketPriceMapper;
 import com.pauleternity.marketdaily.model.market.HourlyMarketHistory;
 import com.pauleternity.marketdaily.model.market.LatestQuote;
@@ -10,7 +11,9 @@ import com.pauleternity.marketdaily.model.market.MarketHistory;
 import com.pauleternity.marketdaily.model.market.MarketSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -30,11 +33,15 @@ public class MarketService {
     private static final Logger log = LoggerFactory.getLogger(MarketService.class);
     private final MarketPriceMapper prices;
     private final List<MarketQuoteProvider> providers;
+    // 与小时采集器使用相同的计划。禁用定时采样时为空，所有缺报照常留空。
+    private final CronExpression hourlySchedule;
 
     /** 通过 Provider 列表接入行情来源，通过 Mapper 操作日度快照。 */
-    MarketService(MarketPriceMapper prices, List<MarketQuoteProvider> providers) {
+    MarketService(MarketPriceMapper prices, List<MarketQuoteProvider> providers,
+                  @Value("${MARKET_HOURLY_CRON:0 5 * * * *}") String hourlyCron) {
         this.prices = prices;
         this.providers = providers;
+        this.hourlySchedule = Scheduled.CRON_DISABLED.equals(hourlyCron) ? null : CronExpression.parse(hourlyCron);
     }
 
     /** 同一实例串行采集，整轮按触发时的业务日期入库。 */
@@ -114,13 +121,17 @@ public class MarketService {
         return new MarketHistory(asset.name(), asset.unit(), from, day, List.copyOf(byMarketDate.values()));
     }
 
-    /** 返回包含当前小时在内的最近 24 个小时。 */
+    /** 返回最近 24 小时的真实报价和国内金银的常规休市采样小时。 */
     public HourlyMarketHistory hourlyHistory(MarketAsset asset, Instant now) {
         // 查询边界对齐整点，过去 23 小时加当前小时正好是 24 个桶。
         Instant through = now.truncatedTo(ChronoUnit.HOURS);
         Instant from = through.minus(23, ChronoUnit.HOURS);
+        // 仅上金所延时报价共用这套盘时，其余资产的缺报无休市分类。
+        boolean domesticMetal = asset == MarketAsset.AU9999 || asset == MarketAsset.AGTD;
+        List<Instant> closedHours = domesticMetal && hourlySchedule != null
+                ? SgeTradingHours.closedSamplingHours(hourlySchedule, from, through) : List.of();
         return new HourlyMarketHistory(asset.unit(), from, through,
-                prices.hourlyHistory(asset.name(), asset.source(), from, through));
+                prices.hourlyHistory(asset.name(), asset.source(), from, through), closedHours);
     }
 
     /** 保存单一资产的结果，失败或者缺少比较值时使用空值。 */

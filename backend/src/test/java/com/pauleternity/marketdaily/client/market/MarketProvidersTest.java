@@ -93,20 +93,24 @@ class MarketProvidersTest {
         assertThat(quote.observedAt()).isNull();
     }
 
-    /** BTC 涨跌幅采用来源的 24 小时百分比。 */
+    /** BTC/USDT 使用币安滚动窗口的百分比、起点报价和结束时间。 */
     @Test
     void keepsBitcoinRollingChangeFromSource() {
-        var provider = new CoinGeckoQuoteProvider(mockHttp("""
-                [
-                  {"id":"bitcoin","current_price":80000,"price_change_24h":-123.12,
-                   "price_change_percentage_24h":-0.1537,"last_updated":"2026-11-19T00:00:00Z"}
-                ]
-                """), "test-only");
+        // 取北京服务器样例中的公开行情字段，closeTime 为毫秒时间戳。
+        var provider = new BinanceQuoteProvider(mockHttp("""
+                {"symbol":"BTCUSDT","lastPrice":"61431.89000000","openPrice":"61278.32000000",
+                 "priceChange":"153.57000000","priceChangePercent":"0.251","closeTime":1795427926001}
+                """));
 
         var quotes = provider.fetch();
-        assertThat(quotes).containsOnlyKeys(MarketAsset.BTCUSD);
-        assertThat(quotes.get(MarketAsset.BTCUSD).changePercent()).isEqualByComparingTo("-0.1537");
-        assertThat(quotes.get(MarketAsset.BTCUSD).previousPrice()).isEqualByComparingTo("80123.12");
+        assertThat(quotes).containsOnlyKeys(MarketAsset.BTCUSDT);
+        var quote = quotes.get(MarketAsset.BTCUSDT);
+        assertThat(quote.price()).isEqualByComparingTo("61431.89");
+        assertThat(quote.previousPrice()).isEqualByComparingTo("61278.32");
+        assertThat(quote.changeAmount()).isEqualByComparingTo("153.57");
+        assertThat(quote.changePercent()).isEqualByComparingTo("0.251");
+        assertThat(quote.observedAt()).isEqualTo(Instant.parse("2026-11-23T09:58:46.001Z"));
+        assertThat(quote.marketDate()).isEqualTo(LocalDate.of(2026, 11, 23));
     }
 
     /** 拦截 HTTP 交换，为 Provider 提供可重复的 JSON 响应。 */

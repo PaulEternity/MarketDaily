@@ -10,11 +10,12 @@ public enum MarketAsset {
     XAGUSD("国际现货白银", "USD", "USD/oz", "Gold API", "PREVIOUS_DAILY_SAMPLE"),
     AGTD("国内白银 Ag(T+D)", "CNY", "CNY/kg", "上海黄金交易所", "PREVIOUS_TRADING_CLOSE"),
     NASDAQCOM("纳斯达克综合指数", "POINTS", "点", "FRED", "PREVIOUS_TRADING_CLOSE"),
-    BTCUSD("比特币", "USD", "USD", "CoinGecko", "ROLLING_24_HOURS"),
+    BTCUSDT("比特币", "USDT", "USDT", "币安现货", "ROLLING_24_HOURS"),
+    BTCUSD("比特币", "USD", "USD", "CoinGecko", "ROLLING_24_HOURS"), // 仅保留原美元报价查询
     ETHUSD("以太坊", "USD", "USD", "CoinGecko", "ROLLING_24_HOURS"); // 仅保留历史查询兼容
 
-    // 最新行情固定展示顺序。ETH 停止采集，已有历史仍可查询。
-    public static final List<MarketAsset> ACTIVE = List.of(XAUUSD, AU9999, XAGUSD, AGTD, NASDAQCOM, BTCUSD);
+    // 最新行情固定展示顺序，BTC 的 USDT 现货和旧美元历史使用不同资产标识。
+    public static final List<MarketAsset> ACTIVE = List.of(XAUUSD, AU9999, XAGUSD, AGTD, NASDAQCOM, BTCUSDT);
 
     // 日报、黄金和加密货币的日度快照按北京时间划分。
     public static final ZoneId REPORT_ZONE = ZoneId.of("Asia/Shanghai");
@@ -25,14 +26,14 @@ public enum MarketAsset {
     private final String source;
     private final String comparisonType;
 
-    /** 是否提供小时趋势，包括按采集时间归档的国内金银延时快照。 */
+    /** 是否提供小时趋势，包括国内金银延时快照和已有 BTC/USD 历史。 */
     public boolean supportsHourly() {
-        return hasTimedQuote() || this == AU9999 || this == AGTD;
+        return hasTimedQuote() || this == AU9999 || this == AGTD || this == BTCUSD;
     }
 
     /** 常规报价接口是否直接提供带来源时间戳的盘中报价。 */
     public boolean hasTimedQuote() {
-        return this == XAUUSD || this == XAGUSD || this == BTCUSD;
+        return this == XAUUSD || this == XAGUSD || this == BTCUSDT;
     }
 
     /** 为资产绑定固定的数据源、单位和涨跌幅定义。 */

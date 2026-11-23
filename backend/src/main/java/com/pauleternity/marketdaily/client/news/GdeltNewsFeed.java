@@ -3,6 +3,7 @@ package com.pauleternity.marketdaily.client.news;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.pauleternity.marketdaily.shared.SourceHttp;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -17,6 +18,7 @@ import java.util.List;
 
 /** 通过一次 GDELT 请求检索三个市场的新闻元数据。 */
 @Component
+@ConditionalOnProperty(name = "news.gdelt.enabled", havingValue = "true", matchIfMissing = true)
 class GdeltNewsFeed implements NewsFeed {
 
     // 上游 seendate 使用 UTC 紧凑格式，表示收录而非发布时间。

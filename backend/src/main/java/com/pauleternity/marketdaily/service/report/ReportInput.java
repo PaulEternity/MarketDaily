@@ -78,7 +78,7 @@ class ReportInput {
         var quote = item.quote();
         String category = switch (item.symbol()) {
             case "NASDAQCOM" -> "NASDAQ";
-            case "BTCUSD" -> "CRYPTO";
+            case "BTCUSDT", "BTCUSD" -> "CRYPTO";
             default -> "GOLD";
         };
         return new ReportContent.Price(item.symbol(), item.name(), category, item.unit(), item.source(),

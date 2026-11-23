@@ -17,13 +17,14 @@ const assets = [
   { code: 'XAGUSD', label: '国际现货白银', symbol: 'XAG', glyph: 'Ag', color: '#4d657e', tint: '#e8eef5', source: 'Gold API', unit: 'USD/oz', compare: '较上次日度采样' },
   { code: 'AGTD', label: '国内白银', symbol: 'Ag(T+D)', glyph: 'Ag', color: '#4d657e', tint: '#e8eef5', source: '上海黄金交易所', unit: 'CNY/kg', compare: '较上个交易日收盘' },
   { code: 'NASDAQCOM', label: '纳斯达克综合指数', symbol: 'IXIC', glyph: 'N', color: '#3956b4', tint: '#e9edfd', source: 'FRED', unit: '点', compare: '较上个交易日收盘' },
-  { code: 'BTCUSD', label: '比特币', symbol: 'BTC', glyph: '₿', color: '#a14d15', tint: '#fbebdc', source: 'CoinGecko', unit: 'USD', compare: '24 小时涨跌' },
+  { code: 'BTCUSDT', label: '比特币', symbol: 'BTC/USDT', glyph: '₿', color: '#a14d15', tint: '#fbebdc', source: '币安现货', unit: 'USDT', compare: '24 小时涨跌' },
 ] as const
 
 const selectedAsset = ref<SymbolCode>('XAUUSD')
 // 保留用户选择的趋势窗口。仅有日行情的品种自动回到 7 日视图。
 const trendRange = ref<'24h' | 7 | 30>(7)
-const intradayAssets = new Set<SymbolCode>(['XAUUSD', 'AU9999', 'XAGUSD', 'AGTD', 'BTCUSD'])
+// 这些标的包含独立的小时报价序列，用于决定是否显示 24 小时选项。
+const intradayAssets = new Set<SymbolCode>(['XAUUSD', 'AU9999', 'XAGUSD', 'AGTD', 'BTCUSDT'])
 // 国内金银的延时源只提供最新价格，时间轴按采集时刻归档。
 const isDelayedMetal = computed(() => selectedAsset.value === 'AU9999' || selectedAsset.value === 'AGTD')
 const canShowHourly = computed(() => intradayAssets.has(selectedAsset.value))
@@ -202,7 +203,7 @@ function sourceState(item?: Latest): { text: string; tone: string } {
           </div>
           <TrendChart v-else :history="history" :range="activeRange" :color="asset.color" />
           <p v-if="activeRange !== '24h'" class="chart-note">仅展示已采集报价，缺失日期留空。</p>
-          <p v-else-if="isDelayedMetal" class="chart-note">上金所延时报价，按北京时间的采集小时归档，缺失时段留空。</p>
+          <p v-else-if="isDelayedMetal" class="chart-note">上金所延时报价，按北京时间的采集小时归档。虚线连接常规休市前后的报价，其他缺报时段留空。</p>
           <p v-else class="chart-note">北京时间，展示每小时最新的已采集报价，缺失时段留空。</p>
         </section>
 

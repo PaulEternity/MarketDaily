@@ -1,7 +1,7 @@
 import { shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
 /** 服务端支持的行情资产和新闻分类。 */
-export type SymbolCode = 'XAUUSD' | 'AU9999' | 'XAGUSD' | 'AGTD' | 'NASDAQCOM' | 'BTCUSD'
+export type SymbolCode = 'XAUUSD' | 'AU9999' | 'XAGUSD' | 'AGTD' | 'NASDAQCOM' | 'BTCUSDT' | 'BTCUSD'
 export type Market = 'GOLD' | 'NASDAQ' | 'CRYPTO'
 
 /** UTC 时间戳与市场日期分开，休市日的报价保留原始日期。 */
@@ -36,6 +36,8 @@ export interface HourlyHistory {
   from: string
   through: string
   points: { hour: string; price: number }[]
+  // 计划采样落在常规休市内的 UTC 整点。旧版接口省略此字段时，图表保留断点。
+  closedSamplingHours?: string[]
 }
 
 /** 新闻优先显示真实发布时间，其次明确标记收录时间。 */
