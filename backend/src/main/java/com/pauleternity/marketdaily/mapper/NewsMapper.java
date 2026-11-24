@@ -4,6 +4,7 @@ import com.pauleternity.marketdaily.model.news.NewsArticle;
 import com.pauleternity.marketdaily.model.news.NewsEventMember;
 import com.pauleternity.marketdaily.model.news.NewsMarket;
 import com.pauleternity.marketdaily.model.news.NewsRow;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -74,6 +75,18 @@ public interface NewsMapper {
             ON DUPLICATE KEY UPDATE news_id = news_market_relation.news_id
             """)
     void saveMarket(@Param("id") long id, @Param("market") NewsMarket market);
+
+    /**
+     * 删除早于截止时间的报道，由外键级联清理其市场关系。
+     * @param cutoff UTC 截止时间，缺少发布时间和来源收录时间的旧记录按入库时间判断
+     * @return 删除的报道条数
+     */
+    @Delete("""
+            DELETE FROM market_news
+            WHERE news_at < #{cutoff}
+               OR (news_at IS NULL AND collected_at < #{cutoff})
+            """)
+    int deleteExpired(@Param("cutoff") Instant cutoff);
 
     /** 按新闻实际时间窗口统计符合条件的文章数。 */
     @Select("<script>SELECT COUNT(*) " + WINDOW + "</script>")
