@@ -43,7 +43,7 @@ export interface HourlyHistory {
   from: string
   through: string
   points: { hour: string; price: number }[]
-  // 计划采样落在常规休市内的 UTC 整点。旧版接口省略此字段时，图表保留断点。
+  // 计划采样落在常规休市内的 UTC 整点，用于标注可确认的休市缺口。
   closedSamplingHours?: string[]
 }
 

@@ -227,9 +227,12 @@ function sourceState(item?: Latest): { text: string; tone: string } {
             <span v-if="!loadingHistory">{{ historyError ? '可刷新数据后重试。' : '采集到有效报价后，刷新数据即可查看。' }}</span>
           </div>
           <TrendChart v-else :history="history" :range="activeRange" :color="asset.color" />
-          <p v-if="activeRange !== '24h'" class="chart-note">仅展示已采集报价，缺失日期留空。</p>
-          <p v-else-if="isDelayedMetal" class="chart-note">上金所延时报价，按北京时间的采集小时归档。虚线连接常规休市前后的报价，其他缺报时段留空。</p>
-          <p v-else class="chart-note">北京时间，展示每小时最新的已采集报价，缺失时段留空。</p>
+          <p class="chart-note">
+            <template v-if="activeRange !== '24h'">仅展示已采集报价。</template>
+            <template v-else-if="isDelayedMetal">上金所延时报价，按北京时间的采集小时归档。</template>
+            <template v-else>北京时间，展示每小时最新的已采集报价。</template>
+            虚线连接缺口两侧的报价。
+          </p>
         </section>
 
         <section class="panel sources-panel" aria-labelledby="sources-title">
