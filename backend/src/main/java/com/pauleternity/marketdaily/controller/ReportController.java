@@ -1,11 +1,14 @@
 package com.pauleternity.marketdaily.controller;
 
+import com.pauleternity.marketdaily.mapper.TaskExecutionMapper;
 import com.pauleternity.marketdaily.model.ApiResult;
 import com.pauleternity.marketdaily.model.report.ReportGeneration;
 import com.pauleternity.marketdaily.model.report.ReportLookup;
 import com.pauleternity.marketdaily.model.report.ReportPage;
+import com.pauleternity.marketdaily.model.report.ReportScheduleStatus;
 import com.pauleternity.marketdaily.service.report.ReportService;
 import com.pauleternity.marketdaily.shared.AdminKey;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,11 +30,24 @@ public class ReportController {
 
     private final ReportService reports;
     private final AdminKey adminKey;
+    private final TaskExecutionMapper tasks;
+    // 与调度组件使用同一开关，便于区分已停用调度与尚未执行。
+    private final boolean scheduleEnabled;
 
-    /** 分享采集接口已有的管理员授权逻辑。 */
-    ReportController(ReportService reports, AdminKey adminKey) {
+    /** 复用日报服务、管理员授权和自动任务的已存记录。 */
+    ReportController(ReportService reports, AdminKey adminKey, TaskExecutionMapper tasks,
+                     @Value("${marketdaily.report.schedule-enabled:false}") boolean scheduleEnabled) {
         this.reports = reports;
         this.adminKey = adminKey;
+        this.tasks = tasks;
+        this.scheduleEnabled = scheduleEnabled;
+    }
+
+    /** 返回最近一次自动采集和生成的状态、时间及已记录的失败原因。 */
+    @GetMapping("/api/reports/schedule-status")
+    ApiResult<ReportScheduleStatus> scheduleStatus() {
+        return ApiResult.ok(new ReportScheduleStatus(scheduleEnabled,
+                tasks.latestExecution("DAILY_INPUT"), tasks.latestExecution("DAILY_REPORT")));
     }
 
     /** 读取北京时间今日日报，尚未生成时 report 为空。 */

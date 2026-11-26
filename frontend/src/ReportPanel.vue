@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRequest, type Market } from './api'
 
-/** 日报区只读取 MySQL 已存结果，通过快照 ID 展开原文来源。 */
+/** 日报区展示已存内容、原文引用和最近的自动任务执行情况。 */
 const props = defineProps<{ refresh: number }>()
 
 /** 前端只读取展示需要的日报字段。 */
@@ -27,6 +27,23 @@ interface History {
   items: { date: string; summary: string }[]
 }
 
+/** 最近一次自动执行的摘要，运行中的任务没有完成时间。 */
+interface ScheduledTask {
+  businessDate: string
+  attempt: number
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+  reason: string | null
+}
+
+/** 采集和生成的执行记录各自独立，尚无记录时对应字段为空。 */
+interface ScheduleStatus {
+  enabled: boolean
+  collection: ScheduledTask | null
+  generation: ScheduledTask | null
+}
+
 // 空日期表示查看北京时间今日日报；页码仅控制历史列表。
 const selectedDate = ref('')
 const historyPage = ref(1)
@@ -38,12 +55,34 @@ const { data: lookup, pending: loading, error: detailError } = useRequest<{ repo
 const { data: history, pending: historyLoading, error: historyError } = useRequest<History>(
   () => `/api/reports?page=${historyPage.value}&size=${historySize}`, () => props.refresh,
 )
+// 调度状态随整页刷新，切换历史日报和分页时仍展示全局最近一次执行。
+const { data: schedule, pending: scheduleLoading, error: scheduleError } = useRequest<ScheduleStatus>(
+  '/api/reports/schedule-status', () => props.refresh,
+)
+const taskRows = computed(() => [
+  { label: '最近采集', task: schedule.value?.collection },
+  { label: '最近生成', task: schedule.value?.generation },
+])
+// 区分任务运行、部分成功、失败和中断，复用看板已有的状态颜色。
+const taskStates: Partial<Record<string, { text: string; tone: string }>> = {
+  RUNNING: { text: '执行中', tone: 'muted' },
+  SUCCESS: { text: '成功', tone: 'positive' },
+  PARTIAL: { text: '部分成功', tone: 'warning' },
+  FAILED: { text: '失败', tone: 'warning' },
+  INTERRUPTED: { text: '已中断', tone: 'warning' },
+}
 const report = computed(() => lookup.value?.report)
 const pageCount = computed(() => Math.max(1, Math.ceil((history.value?.total ?? 0) / historySize)))
 const labels: Record<Market, string> = { GOLD: '贵金属', NASDAQ: '纳指', CRYPTO: '比特币' }
 // 预判时段与日报提示词一致，用于展示各市场的预测范围。
 const outlookPeriods: Record<Market, string> = { GOLD: '下一交易时段', NASDAQ: '下一交易日', CRYPTO: '未来 24 小时' }
 const formatter = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai' })
+
+/** 未执行与旧记录中的未知状态都使用可读的占位提示。 */
+function taskState(task?: ScheduledTask | null) {
+  return task ? taskStates[task.status] ?? { text: '状态未知', tone: 'muted' }
+    : { text: '暂无记录', tone: 'muted' }
+}
 
 /** 只有快照中真实存在且可安全打开的新闻才显示为链接。 */
 function references(ids: number[]) {
@@ -69,6 +108,33 @@ function references(ids: number[]) {
         <button type="button" :aria-pressed="!selectedDate" @click="selectedDate = ''">今日日报</button>
       </div>
     </div>
+
+    <section class="report-schedule" aria-labelledby="report-schedule-title" :aria-busy="scheduleLoading">
+      <div class="report-schedule-heading">
+        <h3 id="report-schedule-title">自动日报</h3>
+        <span v-if="schedule && !schedule.enabled" class="state muted">调度未启用</span>
+      </div>
+      <p v-if="scheduleLoading || scheduleError" class="report-meta" role="status">
+        {{ scheduleLoading ? '正在读取执行状态' : '执行状态读取失败，可以刷新数据重试。' }}
+      </p>
+      <dl v-else-if="schedule" class="report-task-list">
+        <div v-for="row in taskRows" :key="row.label" class="report-task">
+          <dt>{{ row.label }} <span class="state" :class="taskState(row.task).tone">{{ taskState(row.task).text }}</span></dt>
+          <dd class="report-meta">
+            <template v-if="row.task">
+              {{ row.task.businessDate }} · 第 {{ row.task.attempt }} 次
+              <template v-if="row.task.finishedAt">
+                · 结束于 <time :datetime="row.task.finishedAt">{{ formatter.format(new Date(row.task.finishedAt)) }}</time>
+              </template>
+              <template v-else-if="row.task.startedAt">
+                · 开始于 <time :datetime="row.task.startedAt">{{ formatter.format(new Date(row.task.startedAt)) }}</time>
+              </template>
+              <p v-if="row.task.reason" class="report-task-reason">{{ row.task.reason }}</p>
+            </template>
+          </dd>
+        </div>
+      </dl>
+    </section>
 
     <div class="report-layout">
       <div class="report-main" :aria-busy="loading">
@@ -126,6 +192,13 @@ function references(ids: number[]) {
 
 <style scoped>
 .report-panel { margin-top: 16px; }
+.report-schedule { margin-top: 12px; padding: 9px 0; border-block: 1px solid var(--border); }
+.report-schedule-heading { display: flex; align-items: center; gap: 8px; }
+.report-schedule-heading h3 { margin: 0; font-size: 14px; }
+.report-task-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 6px 0 0; }
+.report-task dt { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.report-task dd { margin-inline-start: 0; overflow-wrap: anywhere; }
+.report-task-reason { margin: 3px 0 0; color: #885213; }
 .report-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
 .report-summary { background: #edf4fa; border-left: 3px solid #527c9f; border-radius: 4px 8px 8px 4px; padding: 12px 14px; }
 .report-section { padding: 11px 1px; border-bottom: 1px solid var(--border); }
@@ -145,7 +218,7 @@ function references(ids: number[]) {
 .report-history li button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .report-empty { padding: 16px 10px; background: #f4f7fa; border-radius: 6px; color: var(--muted); }
 @media (max-width: 700px) {
-  .report-layout { grid-template-columns: minmax(0, 1fr); }
+  .report-layout, .report-task-list { grid-template-columns: minmax(0, 1fr); }
   .report-history { border-left: 0; border-top: 1px solid var(--border); padding: 10px 0 0; }
 }
 </style>

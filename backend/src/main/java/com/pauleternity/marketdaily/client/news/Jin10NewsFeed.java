@@ -35,6 +35,8 @@ class Jin10NewsFeed implements NewsFeed {
     private static final String SEARCH_TOOL = "search_flash";
     // 每项只读首屏，避免热点快讯把油价、央行决议挤出通用列表。
     private static final List<String> MACRO_TERMS = List.of("原油", "OPEC", "美联储", "利率决议", "日本央行", "欧洲央行");
+    // 同时覆盖中英文简称及现货 ETF，结果交给现有新闻规则校验、归类和去重。
+    private static final List<String> BITCOIN_TERMS = List.of("比特币", "BTC", "现货比特币ETF");
     // shortcut: 每轮最多取 8 页，新闻密度高时优先覆盖近期；需要完整窗口时接入按主题检索。
     private static final int MAX_PAGES = 8;
     // 每个 MCP 请求在 5 秒内收取对应结果，避免长期占用采集线程。
@@ -115,16 +117,28 @@ class Jin10NewsFeed implements NewsFeed {
     /** 主题检索走独立来源，搜索失败时普通快讯仍可入库。 */
     @Bean
     NewsFeed jin10MacroFeed() {
+        return topicFeed("JIN10_MACRO", MACRO_TERMS);
+    }
+
+    /** 比特币检索单独记录来源状态，失败时保留普通快讯和宏观专题结果。 */
+    @Bean
+    NewsFeed jin10BitcoinFeed() {
+        return topicFeed("JIN10_BTC", BITCOIN_TERMS);
+    }
+
+    /** 为一组专题词创建新闻来源，统一使用金十快讯的原文链接和发布时间。 */
+    private NewsFeed topicFeed(String source, List<String> keywords) {
         return new NewsFeed() {
-            /** 与普通快讯分开记录来源状态。 */
-            @Override public String source() { return "JIN10_MACRO"; }
+            /** 返回这组专题词对应的采集状态键。 */
+            @Override public String source() { return source; }
             /** 采集主题快讯，时间窗口由新闻清洗统一校验。 */
-            @Override public List<Item> fetch(int hours) { return searchMacroFlashes(); }
+            @Override public List<Item> fetch(int hours) { return searchTopicFlashes(source, keywords); }
         };
     }
 
     /** 从运行时工具定义识别搜索词字段，逐个主题检索快讯。 */
-    private List<Item> searchMacroFlashes() {
+    private List<Item> searchTopicFlashes(String source, List<String> keywords) {
+        // 参数名以当前账号的工具定义为准，避免给不同版本发送错误字段。
         String argument = null;
         for (JsonNode tool : request("tools/list", Map.of()).path("tools")) {
             if (!SEARCH_TOOL.equals(tool.path("name").asText())) continue;
@@ -137,18 +151,18 @@ class Jin10NewsFeed implements NewsFeed {
             }
             break;
         }
-        if (argument == null) throw new IllegalStateException("金十宏观搜索缺少搜索词参数");
+        if (argument == null) throw new IllegalStateException("金十专题搜索缺少搜索词参数");
         List<Item> items = new ArrayList<>();
         // 单个关键词失败时保留其他主题的结果，全组失败才标记来源不可用。
         int successful = 0;
-        for (String keyword : MACRO_TERMS) {
+        for (String keyword : keywords) {
             JsonNode rows;
             try {
                 rows = flashPage(SEARCH_TOOL, Map.of(argument, keyword)).path("items");
                 if (!rows.isArray()) throw new IllegalStateException("金十搜索缺少快讯列表");
                 successful++;
             } catch (RuntimeException ex) {
-                log.warn("金十宏观快讯检索失败，关键词={}，异常={}", keyword, ex.getClass().getSimpleName());
+                log.warn("金十专题快讯检索失败，来源={}，关键词={}，异常={}", source, keyword, ex.getClass().getSimpleName());
                 continue;
             }
             for (JsonNode row : rows) {
@@ -157,7 +171,7 @@ class Jin10NewsFeed implements NewsFeed {
                 if (item != null) items.add(item);
             }
         }
-        if (successful == 0) throw new IllegalStateException("金十宏观快讯全部检索失败");
+        if (successful == 0) throw new IllegalStateException("金十专题快讯全部检索失败");
         return items;
     }
 

@@ -80,6 +80,8 @@ curl --fail-with-body 'http://localhost:8080/api/news?market=GOLD&page=1&size=20
 
 黄金宏观新闻另收录欧洲央行 `ECB_POLICY`、日本央行 `BOJ_POLICY`、OPEC 公告 `OPEC_PRESS` 和 EIA 原油周报 `EIA_WEEKLY`。配置金十 Token 后，`JIN10_MACRO` 还会分别搜索原油、OPEC 和主要央行，每个关键词取首屏。官方列表只有日期时按来源时区日首归档。任一来源不可达时，其他新闻来源继续采集。
 
+同一金十 Token 还会启用比特币专题 `JIN10_BTC`，分别检索「比特币」「BTC」「现货比特币ETF」的首屏。手动采集响应中的 `sources.JIN10_BTC` 显示该来源的结果，相关新闻按现有筛选和去重规则进入 `CRYPTO` 新闻和日报候选。
+
 ## AI 日报
 
 在 `.env` 设置 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL` 后，重启后端。硅基流动的 Base URL 填 `https://api.siliconflow.cn/v1`，第一版用 `Qwen/Qwen3.5-4B`。模型未配置时仍可查询既有日报。
@@ -106,6 +108,8 @@ curl --fail-with-body 'http://localhost:8080/api/reports?page=1&size=10'
 - 08:15 采集行情和新闻，记录未更新的行情和失败来源。
 - 08:30 使用已有数据生成日报。错过采集时先补采，部分来源失败时仍可使用已入库的证据。
 - 09:00 检查当天缺失的日报，全天最多两次自动生成尝试。启动时超过 08:30 会按同一规则检查补跑，已保存日报直接跳过。手动生成仍可通过管理接口触发。
+
+看板通过 `GET /api/reports/schedule-status` 查询自动调度开关，以及最近一次采集和生成的业务日期、尝试次数、执行起止时间、状态和原因。尚未执行的任务返回 `null`。
 
 使用以下 SQL 查询自动任务记录及对应日报的 Token 用量。任务时间戳为 UTC，模型未返回的 Token 用量显示为 `NULL`。
 

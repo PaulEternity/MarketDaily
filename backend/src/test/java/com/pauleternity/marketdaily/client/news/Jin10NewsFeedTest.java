@@ -22,6 +22,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** 验证金十实测的 SSE、无独立标题快讯与分页格式。 */
 class Jin10NewsFeedTest {
 
+    /** 三个比特币专题词全部发出，单个词失败时仍返回有原文链接的快讯。 */
+    @Test
+    void searchesBitcoinTopicsAndKeepsSuccessfulResults() {
+        var json = new ObjectMapper();
+        // 按请求顺序记录搜索词，模拟 BTC 搜索失败和 ETF 搜索无结果。
+        List<String> keywords = new ArrayList<>();
+        var definitions = """
+                {"id":1,"result":{"tools":[{"name":"search_flash","inputSchema":{"properties":{"query":{"type":"string"}}}}]}}
+                """;
+        var builder = WebClient.builder().exchangeFunction(request -> {
+            var mockRequest = new MockClientHttpRequest(request.method(), request.url());
+            return request.writeTo(mockRequest, ExchangeStrategies.withDefaults())
+                    .then(Mono.defer(mockRequest::getBodyAsString))
+                    .flatMap(body -> Mono.fromCallable(() -> json.readTree(body)))
+                    .map(rpc -> {
+                        if ("tools/list".equals(rpc.path("method").asText())) return definitions;
+                        assertThat(rpc.at("/params/name").asText()).isEqualTo("search_flash");
+                        String query = rpc.at("/params/arguments/query").asText();
+                        keywords.add(query);
+                        return switch (query) {
+                            case "比特币" -> """
+                                    {"id":1,"result":{"structuredContent":{"status":200,"data":{"items":[
+                                      {"title":"比特币现货市场成交回升","time":"2026-11-26T00:00:00Z","url":"https://flash.jin10.com/detail/3"}
+                                    ]}}}}
+                                    """;
+                            case "BTC" -> "{\"id\":1,\"result\":{\"structuredContent\":{\"status\":500}}}";
+                            default -> "{\"id\":1,\"result\":{\"structuredContent\":{\"status\":200,\"data\":{\"items\":[]}}}}";
+                        };
+                    }).map(body -> ClientResponse.create(HttpStatus.OK)
+                            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE).body(body).build());
+        });
+
+        var feed = new Jin10NewsFeed(builder, json, "fixture-token").jin10BitcoinFeed();
+        var items = feed.fetch(24);
+
+        assertThat(feed.source()).isEqualTo("JIN10_BTC");
+        assertThat(keywords).containsExactly("比特币", "BTC", "现货比特币ETF");
+        assertThat(items).singleElement().satisfies(item -> {
+            assertThat(item.title()).isEqualTo("比特币现货市场成交回升");
+            assertThat(item.url()).isEqualTo("https://flash.jin10.com/detail/3");
+        });
+    }
+
     /** 首屏按正文提取标题，后续根据工具定义以实际游标翻页，并跳过窗口外旧闻。 */
     @Test
     void readsFlashAndFollowsDiscoveredCursor() throws Exception {

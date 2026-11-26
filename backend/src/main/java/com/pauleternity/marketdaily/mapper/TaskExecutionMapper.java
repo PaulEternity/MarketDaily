@@ -1,5 +1,6 @@
 package com.pauleternity.marketdaily.mapper;
 
+import com.pauleternity.marketdaily.model.report.ReportScheduleStatus;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,8 +10,17 @@ import org.apache.ibatis.annotations.Update;
 import java.time.Instant;
 import java.time.LocalDate;
 
+/** 读写自动日报的采集与生成任务执行记录。 */
 @Mapper
 public interface TaskExecutionMapper {
+
+    /** 按业务日和尝试次数取该类任务的最新记录，复用已有联合索引。 */
+    @Select("""
+            SELECT business_date, attempt_no, status, started_at, finished_at, error_message
+            FROM task_execution WHERE task_type = #{type}
+            ORDER BY business_date DESC, attempt_no DESC LIMIT 1
+            """)
+    ReportScheduleStatus.Task latestExecution(@Param("type") String type);
 
     @Select("""
             SELECT COALESCE(MAX(attempt_no), 0) FROM task_execution
